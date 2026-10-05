@@ -5,12 +5,13 @@ import Clients from './Clients'
 import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import Suivi from './Suivi'
+import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
 import { Verification2FA, Securite } from './Auth2FA'
 
-type Onglet = 'seance' | 'historique' | 'suivi' | 'clients'
-const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', suivi: 'Suivi', clients: 'Clients' }
+type Onglet = 'seance' | 'historique' | 'suivi' | 'exercices' | 'clients'
+const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', suivi: 'Suivi', exercices: 'Exercices', clients: 'Clients' }
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
@@ -63,6 +64,7 @@ export default function App() {
           <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
         )}
         {onglet === 'suivi' && <Suivi />}
+        {onglet === 'exercices' && <Bibliotheque />}
         {onglet === 'clients' && (
           <>
             <Clients />

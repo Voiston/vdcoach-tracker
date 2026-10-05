@@ -42,6 +42,20 @@ function DerniereFois({ d }: { d: Dernier }) {
   )
 }
 
+type Fiche = { nom: string; notes: string | null; video_url: string | null }
+
+function FicheExercice({ b }: { b: Fiche }) {
+  const lien = b.video_url && /^https?:\/\//i.test(b.video_url) ? b.video_url : null
+  if (!b.notes && !lien) return null
+  return (
+    <p className="meta">
+      {b.notes}
+      {b.notes && lien ? ' · ' : ''}
+      {lien && <a href={lien} target="_blank" rel="noopener noreferrer">Vidéo</a>}
+    </p>
+  )
+}
+
 export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [clientId, setClientId] = useState('')
@@ -54,6 +68,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [noms, setNoms] = useState<string[]>([]) // suggestions
   const [modeles, setModeles] = useState<{ id: string; nom: string }[]>([])
   const [derniers, setDerniers] = useState<Record<string, Dernier>>({})
+  const [biblio, setBiblio] = useState<Record<string, Fiche>>({})
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
 
@@ -132,6 +147,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
     setErreur('')
   }
+
+  useEffect(() => {
+    supabase
+      .from('bibliotheque_exercices')
+      .select('nom, notes, video_url')
+      .then(({ data }) => setBiblio(Object.fromEntries((data ?? []).map(x => [cle(x.nom), x as Fiche]))))
+  }, [])
 
   // Dernière performance de ce client pour chaque exercice (hors séance en cours de modification)
   useEffect(() => {
@@ -247,6 +269,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
 
+  // Suggestions : exercices déjà saisis + bibliothèque (l'orthographe de la bibliothèque prime)
+  const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
   const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
 
   if (!seanceId && !clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
@@ -276,11 +300,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           )}
         </>
       )}
-      <datalist id="noms-exercices">{noms.map(n => <option key={n} value={n} />)}</datalist>
+      <datalist id="noms-exercices">{suggestions.map(n => <option key={n} value={n} />)}</datalist>
       {lignes.map((l, i) => (
         <div className="exercice" key={i}>
           <input list="noms-exercices" placeholder="Exercice" value={l.nom} onChange={e => maj(i, 'nom', e.target.value)} />
           {derniers[cle(l.nom)] && <DerniereFois d={derniers[cle(l.nom)]} />}
+          {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
           <div className="ligne">
             <input inputMode="numeric" placeholder="Séries" value={l.series} onChange={e => maj(i, 'series', e.target.value)} />
             <input inputMode="numeric" placeholder="Reps" value={l.repetitions} onChange={e => maj(i, 'repetitions', e.target.value)} />

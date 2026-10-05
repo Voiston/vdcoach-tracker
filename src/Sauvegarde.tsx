@@ -3,7 +3,10 @@ import { supabase } from './supabase'
 
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
-const TABLES = ['clients', 'seances', 'exercices', 'mesures'] as const
+// Ordre de restauration : les tables liées passent après celles dont elles dépendent
+const TABLES = ['bibliotheque_exercices', 'clients', 'modeles', 'modele_exercices', 'seances', 'exercices', 'mesures'] as const
+// Absentes des anciennes sauvegardes : facultatives à l'import
+const FACULTATIVES: string[] = ['bibliotheque_exercices', 'modeles', 'modele_exercices']
 type Donnees = { version: number; exporte_le?: string } & Record<(typeof TABLES)[number], Ligne[]>
 
 // L'API renvoie 1000 lignes maximum par requête : on pagine pour tout récupérer.
@@ -37,14 +40,14 @@ export default function Sauvegarde() {
   async function exporter(format: 'json' | 'csv') {
     setEtat('Export en cours…')
     try {
-      const [clients, seances, exercices, mesures] = await Promise.all(
-        ['clients', 'seances', 'exercices', 'mesures'].map(toutes),
+      const [clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices] = await Promise.all(
+        ['clients', 'seances', 'exercices', 'mesures', 'bibliotheque_exercices', 'modeles', 'modele_exercices'].map(toutes),
       )
       const jour = new Date().toLocaleDateString('sv-SE')
 
       if (format === 'json') {
         const maintenant = new Date().toISOString()
-        const contenu = JSON.stringify({ version: 1, exporte_le: maintenant, clients, seances, exercices, mesures }, null, 2)
+        const contenu = JSON.stringify({ version: 1, exporte_le: maintenant, clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices }, null, 2)
         telecharger(`vdcoach-sauvegarde-${jour}.json`, contenu, 'application/json')
         localStorage.setItem(CLE, maintenant)
         setDerniere(maintenant)
@@ -75,8 +78,9 @@ export default function Sauvegarde() {
     if (!fichier) return
     try {
       const d = JSON.parse(await fichier.text())
-      const valide = d?.version === 1 && TABLES.every(t => Array.isArray(d[t]) && d[t].every((l: Ligne) => typeof l?.id === 'string'))
+      const valide = d?.version === 1 && TABLES.every(t => (d[t] === undefined && FACULTATIVES.includes(t)) || (Array.isArray(d[t]) && d[t].every((l: Ligne) => typeof l?.id === 'string')))
       if (!valide) throw new Error('fichier de sauvegarde non reconnu.')
+      for (const t of TABLES) d[t] ??= []
       setApercu(d)
       setEtat('')
     } catch (err) {

@@ -15,7 +15,7 @@ const TYPES: Record<string, { label: string; unite: string }> = {
 const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
 
 type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
-type SeanceExo = { date_seance: string; exercices: { nom: string; charge_kg: number | null; repetitions: number | null }[] }
+type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null; charge_kg: number | null; repetitions: number | null }[] }
 type Point = { date: string; valeur: number }
 
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -60,6 +60,7 @@ export default function Suivi() {
   const [valeur, setValeur] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [exo, setExo] = useState('')
+  const [groupes, setGroupes] = useState<Record<string, string>>({}) // nom d'exercice (minuscules) → groupe
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
@@ -69,11 +70,18 @@ export default function Suivi() {
     })
   }, [])
 
+  useEffect(() => {
+    supabase
+      .from('bibliotheque_exercices')
+      .select('nom, groupe')
+      .then(({ data }) => setGroupes(Object.fromEntries((data ?? []).map(x => [x.nom.trim().toLowerCase(), x.groupe]))))
+  }, [])
+
   async function charger() {
     if (!clientId) return
     const [m, s] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
-      supabase.from('seances').select('date_seance, exercices(nom, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
+      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
     ])
     const err = m.error ?? s.error
     if (err) return setErreur(err.message)
@@ -119,6 +127,19 @@ export default function Suivi() {
   const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
   const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
 
+  // Séries des 30 derniers jours par groupe musculaire (d'après la bibliothèque d'exercices)
+  const il30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
+  const parGroupe: Record<string, number> = {}
+  for (const s of seances) {
+    if (s.date_seance < il30) continue
+    for (const x of s.exercices) {
+      const g = groupes[x.nom.trim().toLowerCase()] ?? 'Non classé'
+      parGroupe[g] = (parGroupe[g] ?? 0) + (x.series ?? 1)
+    }
+  }
+  const volumes = Object.entries(parGroupe).sort((a, b) => b[1] - a[1])
+  const maxVolume = Math.max(1, ...volumes.map(([, n]) => n))
+
   // 1RM estimée (formule d'Epley) pour une série donnée
   const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
     x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
@@ -155,6 +176,21 @@ export default function Suivi() {
         <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
         <div><strong>{seances.length ? courte(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière</span></div>
       </div>
+
+      <h3>Séries par groupe musculaire (30 jours)</h3>
+      {volumes.length ? (
+        <ul className="barres">
+          {volumes.map(([g, n]) => (
+            <li key={g}>
+              <span>{g}</span>
+              <div><i style={{ width: `${(n / maxVolume) * 100}%` }} /></div>
+              <b>{n}</b>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="meta">Aucune séance sur les 30 derniers jours.</p>
+      )}
 
       <h3>Charges</h3>
       {noms.length ? (

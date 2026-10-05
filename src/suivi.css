@@ -7,3 +7,9 @@
 section h3 { margin: 1.2rem 0 .5rem; }
 .attention { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: .5rem .7rem; margin: .3rem 0; color: #78350f; }
 .bandeau { background: #ecfdf5; border: 1px solid var(--c); border-radius: 8px; padding: .7rem; margin: 0 0 1rem; cursor: pointer; }
+.app nav button { font-size: .85rem; padding: 1rem .2rem; }
+.barres { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .4rem; }
+.barres li { display: grid; grid-template-columns: 7rem 1fr 2rem; gap: .5rem; align-items: center; font-size: .9rem; }
+.barres div { background: #e4e4e7; height: .6rem; border-radius: 4px; overflow: hidden; }
+.barres i { display: block; height: 100%; background: var(--c); }
+.barres b { text-align: right; }
