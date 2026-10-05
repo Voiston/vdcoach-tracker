@@ -6,6 +6,7 @@ import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import Suivi from './Suivi'
 import Sauvegarde from './Sauvegarde'
+import Modeles from './Modeles'
 import { Verification2FA, Securite } from './Auth2FA'
 
 type Onglet = 'seance' | 'historique' | 'suivi' | 'clients'
@@ -62,6 +63,7 @@ export default function App() {
         {onglet === 'clients' && (
           <>
             <Clients />
+            <Modeles />
             <Sauvegarde />
             <Securite />
           </>

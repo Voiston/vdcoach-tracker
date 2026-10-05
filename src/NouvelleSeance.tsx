@@ -27,6 +27,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [lignes, setLignes] = useState<Ligne[]>([vide()])
   const [anciens, setAnciens] = useState<string[]>([]) // exercices existants (mode modification)
   const [noms, setNoms] = useState<string[]>([]) // suggestions
+  const [modeles, setModeles] = useState<{ id: string; nom: string }[]>([])
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
 
@@ -63,6 +64,48 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         })
     }
   }, [seanceId])
+
+  useEffect(() => {
+    supabase.from('modeles').select('id, nom').order('nom').then(({ data }) => setModeles(data ?? []))
+  }, [])
+
+  async function appliquerModele(id: string) {
+    if (!id) return
+    const { data, error } = await supabase
+      .from('modeles')
+      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg)')
+      .eq('id', id)
+      .single()
+    if (error || !data) return setErreur(error?.message ?? 'Modèle introuvable.')
+    setLignes(versLignes(data.modele_exercices as Exo[]))
+    if (data.duree_min) setDuree(txt(data.duree_min))
+    setErreur('')
+  }
+
+  async function enregistrerModele() {
+    const exos = lignes.filter(l => l.nom.trim())
+    if (!exos.length) return setErreur('Ajoute au moins un exercice pour créer un modèle.')
+    const nom = window.prompt('Nom du modèle (ex. Full body A) :')?.trim()
+    if (!nom) return
+    const { data, error } = await supabase.from('modeles').insert({ nom, duree_min: num(duree) }).select('id, nom').single()
+    if (error) return setErreur(error.message)
+    const { error: erreurExos } = await supabase.from('modele_exercices').insert(
+      exos.map((l, i) => ({
+        modele_id: data.id,
+        ordre: i,
+        nom: l.nom.trim(),
+        series: num(l.series),
+        repetitions: num(l.repetitions),
+        charge_kg: num(l.charge_kg),
+      })),
+    )
+    if (erreurExos) {
+      await supabase.from('modeles').delete().eq('id', data.id)
+      return setErreur(erreurExos.message)
+    }
+    setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
+    setErreur('')
+  }
 
   function maj(i: number, champ: keyof Ligne, valeur: string) {
     setLignes(l => l.map((x, j) => (j === i ? { ...x, [champ]: valeur } : x)))
@@ -145,7 +188,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       </div>
 
       <h3>Exercices</h3>
-      {!seanceId && <button type="button" className="secondaire" onClick={reprendre}>Reprendre la dernière séance</button>}
+      {!seanceId && (
+        <>
+          <button type="button" className="secondaire" onClick={reprendre}>Reprendre la dernière séance</button>
+          {modeles.length > 0 && (
+            <select value="" onChange={e => appliquerModele(e.target.value)}>
+              <option value="">Charger un modèle…</option>
+              {modeles.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+            </select>
+          )}
+        </>
+      )}
       <datalist id="noms-exercices">{noms.map(n => <option key={n} value={n} />)}</datalist>
       {lignes.map((l, i) => (
         <div className="exercice" key={i}>
@@ -158,6 +211,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         </div>
       ))}
       <button type="button" className="secondaire" onClick={() => setLignes(l => [...l, vide()])}>+ Ajouter un exercice</button>
+      <button type="button" className="secondaire" onClick={enregistrerModele}>Enregistrer comme modèle</button>
 
       <textarea placeholder="Notes de séance" value={notes} onChange={e => setNotes(e.target.value)} />
       {erreur && <p className="erreur">{erreur}</p>}
