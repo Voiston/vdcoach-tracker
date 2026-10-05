@@ -6,6 +6,7 @@ import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import Suivi from './Suivi'
 import Sauvegarde from './Sauvegarde'
+import { Verification2FA, Securite } from './Auth2FA'
 
 type Onglet = 'seance' | 'historique' | 'suivi' | 'clients'
 const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', suivi: 'Suivi', clients: 'Clients' }
@@ -21,6 +22,19 @@ export default function App() {
     return () => data.subscription.unsubscribe()
   }, [])
 
+  // Double authentification : undefined = vérification en cours
+  const [exige2fa, setExige2fa] = useState<boolean | undefined>(undefined)
+
+  async function verifierNiveau() {
+    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    setExige2fa(data?.nextLevel === 'aal2' && data.currentLevel !== 'aal2')
+  }
+
+  useEffect(() => {
+    if (!session) setExige2fa(undefined)
+    else verifierNiveau()
+  }, [session])
+
   function aller(o: Onglet) {
     setEdition(null)
     setOnglet(o)
@@ -28,6 +42,8 @@ export default function App() {
 
   if (session === undefined) return <p className="centre">Chargement…</p>
   if (!session) return <Connexion />
+  if (exige2fa === undefined) return <p className="centre">Chargement…</p>
+  if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
   return (
     <div className="app">
@@ -47,6 +63,7 @@ export default function App() {
           <>
             <Clients />
             <Sauvegarde />
+            <Securite />
           </>
         )}
       </main>
