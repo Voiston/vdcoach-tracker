@@ -12,35 +12,46 @@ type Seance = {
   exercices: Exercice[]
 }
 
-export default function Historique() {
+const dateFr = (d: string) =>
+  new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+
+export default function Historique({ onEdit }: { onEdit: (id: string) => void }) {
   const [seances, setSeances] = useState<Seance[]>([])
   const [erreur, setErreur] = useState('')
 
-  useEffect(() => {
-    supabase
+  async function charger() {
+    const { data, error } = await supabase
       .from('seances')
       .select('id, date_seance, duree_min, ressenti, notes, clients(prenom, nom), exercices(id, ordre, nom, series, repetitions, charge_kg)')
       .order('date_seance', { ascending: false })
       .limit(50)
-      .then(({ data, error }) => {
-        if (error) setErreur(error.message)
-        else setSeances(data as unknown as Seance[])
-      })
+    if (error) setErreur(error.message)
+    else setSeances(data as unknown as Seance[])
+  }
+
+  useEffect(() => {
+    charger()
   }, [])
 
-  if (erreur) return <p className="erreur">{erreur}</p>
-  if (!seances.length) return <p className="centre">Aucune séance enregistrée.</p>
+  async function supprimer(s: Seance) {
+    if (!window.confirm(`Supprimer la séance de ${s.clients?.prenom} du ${dateFr(s.date_seance)} ?`)) return
+    const { error } = await supabase.from('seances').delete().eq('id', s.id)
+    if (error) setErreur(error.message)
+    else charger()
+  }
 
   return (
     <section>
       <h2>Historique</h2>
+      {erreur && <p className="erreur">{erreur}</p>}
+      {!seances.length && !erreur && <p className="centre">Aucune séance enregistrée.</p>}
       <ul className="liste">
         {seances.map(s => (
           <li key={s.id}>
             <div>
               <strong>{s.clients?.prenom} {s.clients?.nom}</strong>
               <p className="meta">
-                {new Date(s.date_seance).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                {dateFr(s.date_seance)}
                 {s.duree_min ? ` · ${s.duree_min} min` : ''}
                 {s.ressenti ? ` · ressenti ${s.ressenti}/10` : ''}
               </p>
@@ -52,6 +63,10 @@ export default function Historique() {
                 </p>
               ))}
               {s.notes && <p className="meta">{s.notes}</p>}
+              <div className="ligne">
+                <button className="lien" onClick={() => onEdit(s.id)}>Modifier</button>
+                <button className="lien" onClick={() => supprimer(s)}>Supprimer</button>
+              </div>
             </div>
           </li>
         ))}

@@ -11,12 +11,18 @@ const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Histo
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [onglet, setOnglet] = useState<Onglet>('seance')
+  const [edition, setEdition] = useState<string | null>(null) // id de la séance en cours de modification
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data } = supabase.auth.onAuthStateChange((_evenement, s) => setSession(s))
     return () => data.subscription.unsubscribe()
   }, [])
+
+  function aller(o: Onglet) {
+    setEdition(null)
+    setOnglet(o)
+  }
 
   if (session === undefined) return <p className="centre">Chargement…</p>
   if (!session) return <Connexion />
@@ -28,13 +34,17 @@ export default function App() {
         <button className="lien" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
       </header>
       <main>
-        {onglet === 'seance' && <NouvelleSeance onSaved={() => setOnglet('historique')} />}
-        {onglet === 'historique' && <Historique />}
+        {onglet === 'seance' && (
+          <NouvelleSeance key={edition ?? 'nouvelle'} seanceId={edition} onSaved={() => aller('historique')} />
+        )}
+        {onglet === 'historique' && (
+          <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
+        )}
         {onglet === 'clients' && <Clients />}
       </main>
       <nav>
         {(Object.keys(LIBELLES) as Onglet[]).map(o => (
-          <button key={o} className={o === onglet ? 'actif' : ''} onClick={() => setOnglet(o)}>
+          <button key={o} className={o === onglet ? 'actif' : ''} onClick={() => aller(o)}>
             {LIBELLES[o]}
           </button>
         ))}
@@ -51,7 +61,7 @@ function Connexion() {
   async function connecter(e: React.FormEvent) {
     e.preventDefault()
     const { error } = await supabase.auth.signInWithPassword({ email, password: mdp })
-    if (error) setErreur('Identifiants incorrects.')
+    if (error) setErreur(error.code === 'invalid_credentials' ? 'Identifiants incorrects.' : error.message)
   }
 
   return (
