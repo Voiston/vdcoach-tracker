@@ -1,0 +1,7 @@
+.courbe { width: 100%; height: auto; background: #fff; border: 1px solid var(--bord); border-radius: 8px; }
+.courbe text { fill: #52525b; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .8rem 0; }
+.stats div { background: #fff; border: 1px solid var(--bord); border-radius: 8px; padding: .6rem; text-align: center; }
+.stats strong { display: block; font-size: 1.2rem; color: var(--c); }
+.stats span { font-size: .8rem; color: #52525b; }
+section h3 { margin: 1.2rem 0 .5rem; }

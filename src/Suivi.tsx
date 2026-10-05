@@ -1,0 +1,168 @@
+import { useEffect, useState } from 'react'
+import { supabase } from './supabase'
+import type { Client } from './Clients'
+import './suivi.css'
+
+const TYPES: Record<string, { label: string; unite: string }> = {
+  poids: { label: 'Poids', unite: 'kg' },
+  tour_taille: { label: 'Tour de taille', unite: 'cm' },
+  tour_hanches: { label: 'Tour de hanches', unite: 'cm' },
+  tour_bras: { label: 'Tour de bras', unite: 'cm' },
+  tour_cuisse: { label: 'Tour de cuisse', unite: 'cm' },
+  masse_grasse: { label: 'Masse grasse', unite: '%' },
+}
+
+type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
+type SeanceExo = { date_seance: string; exercices: { nom: string; charge_kg: number | null }[] }
+type Point = { date: string; valeur: number }
+
+const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
+
+function Courbe({ points, unite }: { points: Point[]; unite: string }) {
+  if (points.length < 2)
+    return <p className="meta">{points.length ? `Une seule valeur : ${points[0].valeur} ${unite}` : 'Pas encore de données.'}</p>
+
+  const W = 320, H = 150, P = 28
+  const t = points.map(p => Date.parse(p.date))
+  const v = points.map(p => p.valeur)
+  const [t0, t1] = [Math.min(...t), Math.max(...t)]
+  const [lo, hi] = [Math.min(...v), Math.max(...v)]
+  const [v0, v1] = lo === hi ? [lo - 1, hi + 1] : [lo, hi]
+  const x = (ms: number) => P + ((ms - t0) / (t1 - t0 || 1)) * (W - 2 * P)
+  const y = (val: number) => H - P - ((val - v0) / (v1 - v0)) * (H - 2 * P)
+  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(t[i]).toFixed(1)},${y(p.valeur).toFixed(1)}`).join(' ')
+  const delta = v[v.length - 1] - v[0]
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="courbe" role="img" aria-label="Courbe de progression">
+        <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#d4d4d8" />
+        <path d={d} fill="none" stroke="#0f766e" strokeWidth="2" />
+        {points.map((p, i) => <circle key={i} cx={x(t[i])} cy={y(p.valeur)} r="3" fill="#0f766e" />)}
+        <text x={2} y={y(v1) + 4} fontSize="10">{hi}</text>
+        <text x={2} y={y(v0) + 4} fontSize="10">{lo}</text>
+        <text x={P} y={H - 8} fontSize="10">{courte(points[0].date)}</text>
+        <text x={W - P} y={H - 8} fontSize="10" textAnchor="end">{courte(points[points.length - 1].date)}</text>
+      </svg>
+      <p className="meta">{delta > 0 ? '+' : ''}{+delta.toFixed(1)} {unite} depuis le {courte(points[0].date)}</p>
+    </div>
+  )
+}
+
+export default function Suivi() {
+  const [clients, setClients] = useState<Client[]>([])
+  const [clientId, setClientId] = useState('')
+  const [mesures, setMesures] = useState<Mesure[]>([])
+  const [seances, setSeances] = useState<SeanceExo[]>([])
+  const [type, setType] = useState('poids')
+  const [valeur, setValeur] = useState('')
+  const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
+  const [exo, setExo] = useState('')
+  const [erreur, setErreur] = useState('')
+
+  useEffect(() => {
+    supabase.from('clients').select('*').order('prenom').then(({ data }) => {
+      setClients(data ?? [])
+      if (data?.length) setClientId(data[0].id)
+    })
+  }, [])
+
+  async function charger() {
+    if (!clientId) return
+    const [m, s] = await Promise.all([
+      supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
+      supabase.from('seances').select('date_seance, exercices(nom, charge_kg)').eq('client_id', clientId).order('date_seance'),
+    ])
+    const err = m.error ?? s.error
+    if (err) return setErreur(err.message)
+    setErreur('')
+    setMesures(m.data as Mesure[])
+    setSeances(s.data as unknown as SeanceExo[])
+  }
+
+  useEffect(() => {
+    charger()
+  }, [clientId])
+
+  async function ajouter(e: React.FormEvent) {
+    e.preventDefault()
+    const v = Number(valeur.replace(',', '.'))
+    if (!valeur.trim() || Number.isNaN(v)) return setErreur('Valeur invalide.')
+    const { error } = await supabase
+      .from('mesures')
+      .insert({ client_id: clientId, date_mesure: date, type, valeur: v, unite: TYPES[type].unite })
+    if (error) return setErreur(error.message)
+    setValeur('')
+    charger()
+  }
+
+  async function supprimer(m: Mesure) {
+    if (!window.confirm(`Supprimer la mesure du ${courte(m.date_mesure)} ?`)) return
+    const { error } = await supabase.from('mesures').delete().eq('id', m.id)
+    if (error) setErreur(error.message)
+    else charger()
+  }
+
+  if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
+
+  // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
+  const noms = [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort()
+  const exoChoisi = noms.includes(exo) ? exo : noms[0] ?? ''
+  const pointsCharge: Point[] = seances.flatMap(s => {
+    const charges = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null).map(x => Number(x.charge_kg))
+    return charges.length ? [{ date: s.date_seance, valeur: Math.max(...charges) }] : []
+  })
+  const mesuresType = mesures.filter(m => m.type === type)
+  const pointsMesure = mesuresType.map(m => ({ date: m.date_mesure, valeur: Number(m.valeur) }))
+  const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
+  const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
+
+  return (
+    <section>
+      <h2>Suivi</h2>
+      <select value={clientId} onChange={e => setClientId(e.target.value)}>
+        {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
+      </select>
+      {erreur && <p className="erreur">{erreur}</p>}
+
+      <div className="stats">
+        <div><strong>{seances.length}</strong><span>séances</span></div>
+        <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
+        <div><strong>{seances.length ? courte(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière</span></div>
+      </div>
+
+      <h3>Charges</h3>
+      {noms.length ? (
+        <>
+          <select value={exoChoisi} onChange={e => setExo(e.target.value)}>
+            {noms.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <Courbe points={pointsCharge} unite="kg" />
+        </>
+      ) : (
+        <p className="meta">Aucune charge enregistrée pour ce client.</p>
+      )}
+
+      <h3>Mesures</h3>
+      <select value={type} onChange={e => setType(e.target.value)}>
+        {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+      </select>
+      <Courbe points={pointsMesure} unite={TYPES[type].unite} />
+      <form onSubmit={ajouter}>
+        <div className="ligne">
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+          <input inputMode="decimal" placeholder={`Valeur (${TYPES[type].unite})`} value={valeur} onChange={e => setValeur(e.target.value)} />
+        </div>
+        <button type="submit">Ajouter la mesure</button>
+      </form>
+      <ul className="liste">
+        {[...mesuresType].reverse().slice(0, 5).map(m => (
+          <li key={m.id}>
+            <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
+            <button className="lien" onClick={() => supprimer(m)}>Supprimer</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

@@ -4,9 +4,11 @@ import { supabase } from './supabase'
 import Clients from './Clients'
 import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
+import Suivi from './Suivi'
+import Sauvegarde from './Sauvegarde'
 
-type Onglet = 'seance' | 'historique' | 'clients'
-const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', clients: 'Clients' }
+type Onglet = 'seance' | 'historique' | 'suivi' | 'clients'
+const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', suivi: 'Suivi', clients: 'Clients' }
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
@@ -40,7 +42,13 @@ export default function App() {
         {onglet === 'historique' && (
           <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
         )}
-        {onglet === 'clients' && <Clients />}
+        {onglet === 'suivi' && <Suivi />}
+        {onglet === 'clients' && (
+          <>
+            <Clients />
+            <Sauvegarde />
+          </>
+        )}
       </main>
       <nav>
         {(Object.keys(LIBELLES) as Onglet[]).map(o => (
