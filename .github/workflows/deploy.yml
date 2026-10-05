@@ -25,6 +25,8 @@ jobs:
       - run: npm install
       - run: npm run build
         env:
+          # Le site est publié dans /nom-du-depot/
+          BASE_PATH: /${{ github.event.repository.name }}/
           # Valeurs publiques (faites pour être dans le navigateur) : les données
           # sont protégées par les règles d'accès (RLS) de Supabase.
           VITE_SUPABASE_URL: https://mapnorwosymvhzgkasxf.supabase.co
