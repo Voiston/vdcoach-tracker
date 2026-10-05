@@ -12,8 +12,10 @@ const TYPES: Record<string, { label: string; unite: string }> = {
   masse_grasse: { label: 'Masse grasse', unite: '%' },
 }
 
+const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
+
 type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
-type SeanceExo = { date_seance: string; exercices: { nom: string; charge_kg: number | null }[] }
+type SeanceExo = { date_seance: string; exercices: { nom: string; charge_kg: number | null; repetitions: number | null }[] }
 type Point = { date: string; valeur: number }
 
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -71,7 +73,7 @@ export default function Suivi() {
     if (!clientId) return
     const [m, s] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
-      supabase.from('seances').select('date_seance, exercices(nom, charge_kg)').eq('client_id', clientId).order('date_seance'),
+      supabase.from('seances').select('date_seance, exercices(nom, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
     ])
     const err = m.error ?? s.error
     if (err) return setErreur(err.message)
@@ -117,6 +119,29 @@ export default function Suivi() {
   const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
   const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
 
+  // 1RM estimée (formule d'Epley) pour une série donnée
+  const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
+    x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
+      ? null
+      : x.repetitions === 1 ? Number(x.charge_kg) : Number(x.charge_kg) * (1 + x.repetitions / 30)
+  const arrondi = (n: number) => Math.round(n * 10) / 10
+  const points1rm: Point[] = seances.flatMap(s => {
+    const v = s.exercices.filter(x => x.nom === exoChoisi).map(e1rm).filter((n): n is number => n !== null)
+    return v.length ? [{ date: s.date_seance, valeur: arrondi(Math.max(...v)) }] : []
+  })
+  const records = noms.map(nom => {
+    let charge = { valeur: 0, date: '' }
+    let force = { valeur: 0, date: '' }
+    for (const s of seances)
+      for (const x of s.exercices) {
+        if (x.nom !== nom) continue
+        if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) charge = { valeur: Number(x.charge_kg), date: s.date_seance }
+        const f = e1rm(x)
+        if (f !== null && f > force.valeur) force = { valeur: arrondi(f), date: s.date_seance }
+      }
+    return { nom, charge, force }
+  })
+
   return (
     <section>
       <h2>Suivi</h2>
@@ -138,9 +163,28 @@ export default function Suivi() {
             {noms.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
           <Courbe points={pointsCharge} unite="kg" />
+          <p className="meta">Force maximale estimée (1RM, formule d'Epley, séries de 12 répétitions maximum)</p>
+          <Courbe points={points1rm} unite="kg" />
         </>
       ) : (
         <p className="meta">Aucune charge enregistrée pour ce client.</p>
+      )}
+
+      <h3>Records</h3>
+      {records.length ? (
+        <ul className="liste">
+          {records.map(r => (
+            <li key={r.nom}>
+              <div>
+                <strong>{r.nom}</strong>
+                <p>🏆 {r.charge.valeur} kg <span className="meta">({courte(r.charge.date)})</span></p>
+                {r.force.valeur > 0 && <p className="meta">1RM estimée : {r.force.valeur} kg</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="meta">Aucun record pour l'instant.</p>
       )}
 
       <h3>Mesures</h3>

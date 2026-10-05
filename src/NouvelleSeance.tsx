@@ -17,7 +17,32 @@ const versLignes = (exos: Exo[]): Ligne[] =>
 
 const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg)'
 
-export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: () => void }) {
+// Règle de progression simple (double progression) : à modifier selon ta façon de coacher.
+const PLAFOND_REPS = 12 // à partir de ce nombre de répétitions, on suggère d'augmenter la charge
+const PAS_KG = 2.5 // augmentation de charge suggérée
+
+type Dernier = { date: string; series: number | null; repetitions: number | null; charge_kg: number | null }
+const cle = (nom: string) => nom.trim().toLowerCase()
+const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&') // pour ilike
+
+function suggestion(d: Dernier): string {
+  if (d.repetitions === null) return ''
+  if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return `essaie ${+(Number(d.charge_kg) + PAS_KG).toFixed(2)} kg`
+  return `vise ${d.repetitions + 1} répétitions${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
+}
+
+function DerniereFois({ d }: { d: Dernier }) {
+  const conseil = suggestion(d)
+  return (
+    <p className="meta">
+      Dernière fois ({new Date(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
+      {d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}
+      {conseil ? ` · ${conseil}` : ''}
+    </p>
+  )
+}
+
+export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [clientId, setClientId] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
@@ -28,6 +53,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [anciens, setAnciens] = useState<string[]>([]) // exercices existants (mode modification)
   const [noms, setNoms] = useState<string[]>([]) // suggestions
   const [modeles, setModeles] = useState<{ id: string; nom: string }[]>([])
+  const [derniers, setDerniers] = useState<Record<string, Dernier>>({})
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
 
@@ -107,6 +133,53 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setErreur('')
   }
 
+  // Dernière performance de ce client pour chaque exercice (hors séance en cours de modification)
+  useEffect(() => {
+    if (!clientId) return
+    supabase
+      .from('seances')
+      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg)')
+      .eq('client_id', clientId)
+      .lte('date_seance', date)
+      .order('date_seance', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(60)
+      .then(({ data }) => {
+        const m: Record<string, Dernier> = {}
+        for (const s of data ?? []) {
+          if (s.id === seanceId) continue
+          for (const x of s.exercices as any[]) {
+            const k = cle(x.nom)
+            if (!m[k]) m[k] = { date: s.date_seance, series: x.series, repetitions: x.repetitions, charge_kg: x.charge_kg }
+          }
+        }
+        setDerniers(m)
+      })
+  }, [clientId, seanceId, date])
+
+  // Compare chaque charge saisie au meilleur résultat précédent de ce client sur le même exercice
+  async function detecterRecords(): Promise<string[]> {
+    const records: string[] = []
+    const vus = new Set<string>()
+    for (const l of lignes) {
+      const charge = num(l.charge_kg)
+      const k = cle(l.nom)
+      if (!k || charge === null || vus.has(k)) continue
+      vus.add(k)
+      let q = supabase
+        .from('exercices')
+        .select('charge_kg, seances!inner(client_id)')
+        .eq('seances.client_id', clientId)
+        .ilike('nom', echapper(l.nom.trim()))
+        .not('charge_kg', 'is', null)
+      if (seanceId) q = q.neq('seance_id', seanceId)
+      const { data } = await q.order('charge_kg', { ascending: false }).limit(1)
+      const precedent = data?.[0]?.charge_kg
+      if (precedent != null && charge > Number(precedent)) records.push(`${l.nom.trim()} ${charge} kg (avant : ${precedent} kg)`)
+    }
+    return records
+  }
+
   function maj(i: number, champ: keyof Ligne, valeur: string) {
     setLignes(l => l.map((x, j) => (j === i ? { ...x, [champ]: valeur } : x)))
   }
@@ -135,6 +208,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     e.preventDefault()
     setEnvoi(true)
     setErreur('')
+    const records = await detecterRecords()
 
     const champs = { client_id: clientId, date_seance: date, duree_min: num(duree), ressenti: num(ressenti), notes: notes.trim() || null }
     let id = seanceId
@@ -170,8 +244,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       if (error) return echec(error.message)
     }
     setEnvoi(false)
-    onSaved()
+    onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
+
+  const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
 
   if (!seanceId && !clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
 
@@ -181,6 +257,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       <select value={clientId} onChange={e => setClientId(e.target.value)}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
       </select>
+      {pointsAttention && <p className="attention">⚠ {pointsAttention}</p>}
       <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
       <div className="ligne">
         <input type="number" inputMode="numeric" placeholder="Durée (min)" value={duree} onChange={e => setDuree(e.target.value)} />
@@ -203,6 +280,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       {lignes.map((l, i) => (
         <div className="exercice" key={i}>
           <input list="noms-exercices" placeholder="Exercice" value={l.nom} onChange={e => maj(i, 'nom', e.target.value)} />
+          {derniers[cle(l.nom)] && <DerniereFois d={derniers[cle(l.nom)]} />}
           <div className="ligne">
             <input inputMode="numeric" placeholder="Séries" value={l.series} onChange={e => maj(i, 'series', e.target.value)} />
             <input inputMode="numeric" placeholder="Reps" value={l.repetitions} onChange={e => maj(i, 'repetitions', e.target.value)} />

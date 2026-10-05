@@ -16,6 +16,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [onglet, setOnglet] = useState<Onglet>('seance')
   const [edition, setEdition] = useState<string | null>(null) // id de la séance en cours de modification
+  const [bandeau, setBandeau] = useState('') // message affiché après l'enregistrement (ex. nouveau record)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -38,6 +39,7 @@ export default function App() {
 
   function aller(o: Onglet) {
     setEdition(null)
+    setBandeau('')
     setOnglet(o)
   }
 
@@ -53,8 +55,9 @@ export default function App() {
         <button className="lien" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
       </header>
       <main>
+        {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
         {onglet === 'seance' && (
-          <NouvelleSeance key={edition ?? 'nouvelle'} seanceId={edition} onSaved={() => aller('historique')} />
+          <NouvelleSeance key={edition ?? 'nouvelle'} seanceId={edition} onSaved={m => { aller('historique'); setBandeau(m ?? '') }} />
         )}
         {onglet === 'historique' && (
           <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
