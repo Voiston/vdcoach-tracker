@@ -3,6 +3,8 @@ import { supabase } from './supabase'
 
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
+const TABLES = ['clients', 'seances', 'exercices', 'mesures'] as const
+type Donnees = { version: number; exporte_le?: string } & Record<(typeof TABLES)[number], Ligne[]>
 
 // L'API renvoie 1000 lignes maximum par requête : on pagine pour tout récupérer.
 async function toutes(table: string): Promise<Ligne[]> {
@@ -29,6 +31,7 @@ const cellule = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
 export default function Sauvegarde() {
   const [etat, setEtat] = useState('')
   const [derniere, setDerniere] = useState<string | null>(localStorage.getItem(CLE))
+  const [apercu, setApercu] = useState<Donnees | null>(null)
   const jours = derniere ? Math.floor((Date.now() - Date.parse(derniere)) / 86_400_000) : null
 
   async function exporter(format: 'json' | 'csv') {
@@ -66,6 +69,42 @@ export default function Sauvegarde() {
     }
   }
 
+  async function lire(e: React.ChangeEvent<HTMLInputElement>) {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    try {
+      const d = JSON.parse(await fichier.text())
+      const valide = d?.version === 1 && TABLES.every(t => Array.isArray(d[t]) && d[t].every((l: Ligne) => typeof l?.id === 'string'))
+      if (!valide) throw new Error('fichier de sauvegarde non reconnu.')
+      setApercu(d)
+      setEtat('')
+    } catch (err) {
+      setApercu(null)
+      setEtat(`Erreur : ${(err as Error).message}`)
+    }
+  }
+
+  // Fusion : les lignes du fichier sont ajoutées ou mises à jour (même identifiant), rien n'est supprimé.
+  // Les tables sont traitées dans l'ordre des dépendances ; on peut relancer sans risque en cas d'interruption.
+  async function restaurer() {
+    if (!apercu || !window.confirm('Restaurer ces données ? Les lignes du fichier seront ajoutées ou mises à jour, rien ne sera supprimé.')) return
+    setEtat('Restauration en cours…')
+    try {
+      for (const t of TABLES) {
+        const lignes = apercu[t]
+        for (let i = 0; i < lignes.length; i += 500) {
+          const { error } = await supabase.from(t).upsert(lignes.slice(i, i + 500), { onConflict: 'id' })
+          if (error) throw new Error(`${t} : ${error.message}`)
+        }
+      }
+      setApercu(null)
+      setEtat('Restauration terminée.')
+    } catch (e) {
+      setEtat(`Erreur : ${(e as Error).message}`)
+    }
+  }
+
   return (
     <section>
       <h3>Sauvegarde</h3>
@@ -76,6 +115,18 @@ export default function Sauvegarde() {
         <button type="button" onClick={() => exporter('json')}>Sauvegarde complète (JSON)</button>
         <button type="button" className="secondaire" onClick={() => exporter('csv')}>Séances (CSV)</button>
       </div>
+      <h3>Restauration</h3>
+      <p className="meta">Importe un fichier de sauvegarde JSON : ses données sont ajoutées ou mises à jour, rien n'est supprimé.</p>
+      <input type="file" accept="application/json,.json" onChange={lire} />
+      {apercu && (
+        <>
+          <p className="meta">
+            Sauvegarde du {apercu.exporte_le ? new Date(apercu.exporte_le).toLocaleDateString('fr-FR') : 'date inconnue'} :{' '}
+            {apercu.clients.length} client(s), {apercu.seances.length} séance(s), {apercu.exercices.length} exercice(s), {apercu.mesures.length} mesure(s).
+          </p>
+          <button type="button" onClick={restaurer}>Restaurer ces données</button>
+        </>
+      )}
       {etat && <p className="meta">{etat}</p>}
     </section>
   )
