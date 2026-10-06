@@ -2,15 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
 import './suivi.css'
-
-const TYPES: Record<string, { label: string; unite: string }> = {
-  poids: { label: 'Poids', unite: 'kg' },
-  tour_taille: { label: 'Tour de taille', unite: 'cm' },
-  tour_hanches: { label: 'Tour de hanches', unite: 'cm' },
-  tour_bras: { label: 'Tour de bras', unite: 'cm' },
-  tour_cuisse: { label: 'Tour de cuisse', unite: 'cm' },
-  masse_grasse: { label: 'Masse grasse', unite: '%' },
-}
+import { TYPES } from './definitions'
+import { lireClient, memoriserClient } from './client-courant'
 
 const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
 
@@ -66,7 +59,7 @@ export default function Suivi() {
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
       setClients(data ?? [])
-      if (data?.length) setClientId(data[0].id)
+      if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
     })
   }, [])
 
@@ -166,7 +159,7 @@ export default function Suivi() {
   return (
     <section>
       <h2>Suivi</h2>
-      <select value={clientId} onChange={e => setClientId(e.target.value)}>
+      <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       {erreur && <p className="erreur">{erreur}</p>}

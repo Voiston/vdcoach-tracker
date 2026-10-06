@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import Clients from './Clients'
 import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
-import Suivi from './Suivi'
+import SuiviHub from './SuiviHub'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -63,7 +63,7 @@ export default function App() {
         {onglet === 'historique' && (
           <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
         )}
-        {onglet === 'suivi' && <Suivi />}
+        {onglet === 'suivi' && <SuiviHub />}
         {onglet === 'exercices' && <Bibliotheque />}
         {onglet === 'clients' && (
           <>

@@ -13,3 +13,13 @@ section h3 { margin: 1.2rem 0 .5rem; }
 .barres div { background: #e4e4e7; height: .6rem; border-radius: 4px; overflow: hidden; }
 .barres i { display: block; height: 100%; background: var(--c); }
 .barres b { text-align: right; }
+.segments { display: flex; gap: .3rem; margin-bottom: 1rem; }
+.segments button { flex: 1; background: #e4e4e7; color: #18181b; }
+.segments button.actif { background: var(--c); color: #fff; }
+.objectif { flex: 1; }
+.jauge { background: #e4e4e7; height: .8rem; border-radius: 6px; overflow: hidden; margin: .4rem 0 .2rem; }
+.jauge i { display: block; height: 100%; background: var(--c); }
+.jauge.atteint i { background: #16a34a; }
+.bien { color: #15803d; font-weight: 600; }
+.mal { color: #b91c1c; font-weight: 600; }
+.champ-test { display: grid; grid-template-columns: 1fr 7rem; gap: .5rem; align-items: center; }

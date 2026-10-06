@@ -4,9 +4,9 @@ import { supabase } from './supabase'
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
 // Ordre de restauration : les tables liées passent après celles dont elles dépendent
-const TABLES = ['bibliotheque_exercices', 'clients', 'modeles', 'modele_exercices', 'seances', 'exercices', 'mesures'] as const
+const TABLES = ['bibliotheque_exercices', 'clients', 'modeles', 'modele_exercices', 'seances', 'exercices', 'mesures', 'objectifs'] as const
 // Absentes des anciennes sauvegardes : facultatives à l'import
-const FACULTATIVES: string[] = ['bibliotheque_exercices', 'modeles', 'modele_exercices']
+const FACULTATIVES: string[] = ['bibliotheque_exercices', 'modeles', 'modele_exercices', 'objectifs']
 type Donnees = { version: number; exporte_le?: string } & Record<(typeof TABLES)[number], Ligne[]>
 
 // L'API renvoie 1000 lignes maximum par requête : on pagine pour tout récupérer.
@@ -40,14 +40,14 @@ export default function Sauvegarde() {
   async function exporter(format: 'json' | 'csv') {
     setEtat('Export en cours…')
     try {
-      const [clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices] = await Promise.all(
-        ['clients', 'seances', 'exercices', 'mesures', 'bibliotheque_exercices', 'modeles', 'modele_exercices'].map(toutes),
+      const [clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices, objectifs] = await Promise.all(
+        ['clients', 'seances', 'exercices', 'mesures', 'bibliotheque_exercices', 'modeles', 'modele_exercices', 'objectifs'].map(toutes),
       )
       const jour = new Date().toLocaleDateString('sv-SE')
 
       if (format === 'json') {
         const maintenant = new Date().toISOString()
-        const contenu = JSON.stringify({ version: 1, exporte_le: maintenant, clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices }, null, 2)
+        const contenu = JSON.stringify({ version: 1, exporte_le: maintenant, clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices, objectifs }, null, 2)
         telecharger(`vdcoach-sauvegarde-${jour}.json`, contenu, 'application/json')
         localStorage.setItem(CLE, maintenant)
         setDerniere(maintenant)
