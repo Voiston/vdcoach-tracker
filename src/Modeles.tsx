@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
+import { messageErreur } from './erreurs'
+import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
 
 type Modele = { id: string; nom: string; modele_exercices: { nom: string }[] }
 
@@ -15,7 +16,7 @@ export default function Modeles() {
   async function charger() {
     const { data, error } = await supabase.from('modeles').select('id, nom, modele_exercices(nom)').order('nom')
     setCharge(true)
-    if (error) setErreur(error.message)
+    if (error) setErreur(messageErreur(error))
     else setModeles(data as unknown as Modele[])
   }
 
@@ -27,7 +28,7 @@ export default function Modeles() {
     const nom = window.prompt('Nouveau nom du modèle :', m.nom)?.trim()
     if (!nom || nom === m.nom) return
     const { error } = await supabase.from('modeles').update({ nom }).eq('id', m.id)
-    if (error) setErreur(error.message)
+    if (error) setErreur(messageErreur(error))
     else {
       charger()
       notifier('Modèle renommé')
@@ -40,7 +41,7 @@ export default function Modeles() {
       message: `Modèle « ${m.nom} » supprimé`,
       masquer: () => setMasques(l => [...l, m.id]),
       restaurer: () => setMasques(l => l.filter(id => id !== m.id)),
-      effacer: async () => (await supabase.from('modeles').delete().eq('id', m.id)).error?.message,
+      effacer: async () => (await supabase.from('modeles').delete().eq('id', m.id)).error,
     })
   }
 
@@ -49,7 +50,7 @@ export default function Modeles() {
   return (
     <section>
       <h3>Modèles de séance</h3>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={charger} />
       {charge && !visibles.length && !erreur && <EtatVide titre="Aucun modèle" texte="Dans l'onglet Séance, saisis tes exercices puis touche « Enregistrer comme modèle »." />}
       {!charge && !erreur && <Squelette lignes={2} />}
       <ul className="liste" hidden={!charge}>

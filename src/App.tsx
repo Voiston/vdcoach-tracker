@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { seDeconnecter, deconnexionVolontaire } from './deconnexion'
+import { MSG_SESSION, messageErreur } from './erreurs'
 import Clients from './Clients'
 import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import SuiviHub from './SuiviHub'
 import Icone from './icones'
-import { EcranChargement, NavigationCtx } from './ui'
+import { BandeauReseau, EcranChargement, NavigationCtx } from './ui'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -18,12 +20,17 @@ const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Histo
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [onglet, setOnglet] = useState<Onglet>('seance')
+  const [sessionExpiree, setSessionExpiree] = useState(false)
   const [edition, setEdition] = useState<string | null>(null) // id de la séance en cours de modification
   const [bandeau, setBandeau] = useState('') // message affiché après l'enregistrement (ex. nouveau record)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_evenement, s) => setSession(s))
+    const { data } = supabase.auth.onAuthStateChange((evenement, s) => {
+      setSession(s)
+      if (evenement === 'SIGNED_OUT' && !deconnexionVolontaire()) setSessionExpiree(true)
+      if (evenement === 'SIGNED_IN') setSessionExpiree(false)
+    })
     return () => data.subscription.unsubscribe()
   }, [])
 
@@ -47,7 +54,7 @@ export default function App() {
   }
 
   if (session === undefined) return <EcranChargement />
-  if (!session) return <Connexion />
+  if (!session) return <Connexion message={sessionExpiree ? MSG_SESSION : ''} />
   if (exige2fa === undefined) return <EcranChargement />
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
@@ -56,8 +63,9 @@ export default function App() {
     <div className="app">
       <header>
         <h1>VDCoach</h1>
-        <button className="lien" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+        <button className="lien" onClick={() => seDeconnecter()}>Déconnexion</button>
       </header>
+      <BandeauReseau />
       <main>
         {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
         {onglet === 'seance' && (
@@ -90,7 +98,7 @@ export default function App() {
   )
 }
 
-function Connexion() {
+function Connexion({ message }: { message?: string }) {
   const [email, setEmail] = useState('')
   const [mdp, setMdp] = useState('')
   const [erreur, setErreur] = useState('')
@@ -98,12 +106,13 @@ function Connexion() {
   async function connecter(e: React.FormEvent) {
     e.preventDefault()
     const { error } = await supabase.auth.signInWithPassword({ email, password: mdp })
-    if (error) setErreur(error.code === 'invalid_credentials' ? 'Identifiants incorrects.' : error.message)
+    if (error) setErreur(error.code === 'invalid_credentials' ? 'Identifiants incorrects.' : messageErreur(error))
   }
 
   return (
     <form className="connexion" onSubmit={connecter}>
       <h1>VDCoach Tracker</h1>
+      {message && <p className="erreur">{message}</p>}
       <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
       <input type="password" placeholder="Mot de passe" value={mdp} onChange={e => setMdp(e.target.value)} required />
       {erreur && <p className="erreur">{erreur}</p>}

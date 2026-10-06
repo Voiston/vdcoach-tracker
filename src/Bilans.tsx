@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { messageErreur } from './erreurs'
+import { ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -24,7 +25,8 @@ export default function Bilans() {
   const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
-    supabase.from('clients').select('*').order('prenom').then(({ data }) => {
+    supabase.from('clients').select('*').order('prenom').then(({ data, error }) => {
+      if (error) return setErreur(messageErreur(error))
       setClients(data ?? [])
       setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
@@ -40,7 +42,7 @@ export default function Bilans() {
       .in('type', CLES)
       .order('date_mesure')
     setPret(true)
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     setErreur('')
     setResultats((data ?? []).map(x => ({ ...x, valeur: Number(x.valeur) })))
   }
@@ -58,7 +60,7 @@ export default function Bilans() {
     if (!lignes.length) return setErreur('Saisis au moins un résultat.')
     if (lignes.some(l => Number.isNaN(l.valeur))) return setErreur("Une valeur saisie n'est pas un nombre.")
     const { error } = await supabase.from('mesures').insert(lignes)
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     setSaisies({})
     charger()
     notifier('Bilan enregistré')
@@ -73,12 +75,12 @@ export default function Bilans() {
       effacer: async () => {
         const { error } = await supabase.from('mesures').delete().eq('client_id', clientId).eq('date_mesure', d).in('type', CLES)
         if (!error) charger()
-        return error?.message
+        return error
       },
     })
   }
 
-  if (!clientsPrets) return <Squelette lignes={4} />
+  if (!clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
   if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   const visibles = resultats.filter(r => !masquees.includes(r.date_mesure))
@@ -98,7 +100,7 @@ export default function Bilans() {
       <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={charger} />
 
       {!pret && <Squelette lignes={3} />}
       <div hidden={!pret}>

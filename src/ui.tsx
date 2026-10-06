@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
 
 /** Silhouettes grises animées, affichées pendant le chargement d'une liste. */
 export function Squelette({ lignes = 3 }: { lignes?: number }) {
@@ -100,14 +101,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 /**
  * Suppression avec possibilité d'annuler : l'élément disparaît tout de suite de l'écran,
  * mais n'est réellement supprimé qu'au bout de quelques secondes, sauf si on annule.
- * « effacer » renvoie un message d'erreur, ou rien si tout s'est bien passé.
+ * « effacer » renvoie l'erreur éventuelle (rien si tout s'est bien passé).
  */
 export function supprimerAvecAnnulation(o: {
   notifier: Notifier
   message: string
   masquer: () => void
   restaurer: () => void
-  effacer: () => Promise<string | undefined>
+  effacer: () => Promise<unknown>
   delai?: number
 }) {
   const delai = o.delai ?? 5000
@@ -116,8 +117,54 @@ export function supprimerAvecAnnulation(o: {
     const erreur = await o.effacer()
     if (erreur) {
       o.restaurer()
-      o.notifier(`Suppression impossible : ${erreur}`)
+      o.notifier(`Suppression impossible : ${messageErreur(erreur)}`)
     }
   }, delai)
   o.notifier(o.message, { duree: delai, annuler: () => { clearTimeout(minuteur); o.restaurer() } })
+}
+
+
+/* ---------- Erreurs ---------- */
+/** Message d'erreur ; le bouton « Réessayer » n'apparaît que pour les problèmes passagers (réseau, serveur). */
+export function MessageErreur({ message, reessayer }: { message: string; reessayer?: () => void }) {
+  if (!message) return null
+  const passager = message === MSG_RESEAU || message === MSG_SERVEUR
+  return (
+    <div className="erreur-bloc" role="alert">
+      <p className="erreur">{message}</p>
+      {passager && reessayer && <button type="button" className="secondaire" onClick={reessayer}>Réessayer</button>}
+    </div>
+  )
+}
+
+/** Plein écran d'erreur quand les données de départ n'ont pas pu être chargées. */
+export function ErreurChargement({ message }: { message: string }) {
+  return (
+    <div className="etat-vide" role="alert">
+      <strong>Chargement impossible</strong>
+      <p>{message}</p>
+      <button type="button" className="secondaire" onClick={() => window.location.reload()}>Réessayer</button>
+    </div>
+  )
+}
+
+/* ---------- Réseau ---------- */
+export function BandeauReseau() {
+  const [enLigne, setEnLigne] = useState(navigator.onLine)
+  const notifier = useNotifier()
+  const dejaCoupe = useRef(false)
+
+  useEffect(() => {
+    const hors = () => { dejaCoupe.current = true; setEnLigne(false) }
+    const retour = () => { setEnLigne(true); if (dejaCoupe.current) notifier('Connexion rétablie') }
+    window.addEventListener('offline', hors)
+    window.addEventListener('online', retour)
+    return () => {
+      window.removeEventListener('offline', hors)
+      window.removeEventListener('online', retour)
+    }
+  }, [notifier])
+
+  if (enLigne) return null
+  return <p className="hors-ligne" role="status">Tu es hors connexion : rien ne sera enregistré tant que le réseau n'est pas revenu.</p>
 }

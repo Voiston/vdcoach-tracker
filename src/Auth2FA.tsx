@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { seDeconnecter } from './deconnexion'
+import { messageErreur } from './erreurs'
 
 // Écran affiché à la connexion quand la double authentification est activée.
 export function Verification2FA({ onOk }: { onOk: () => void }) {
@@ -10,7 +12,7 @@ export function Verification2FA({ onOk }: { onOk: () => void }) {
     e.preventDefault()
     const { data, error } = await supabase.auth.mfa.listFactors()
     const facteur = data?.totp[0]
-    if (error || !facteur) return setErreur(error?.message ?? 'Aucun facteur trouvé.')
+    if (error || !facteur) return setErreur(error ? messageErreur(error) : 'Aucun facteur trouvé.')
     const { error: erreurCode } = await supabase.auth.mfa.challengeAndVerify({ factorId: facteur.id, code: code.trim() })
     if (erreurCode) return setErreur('Code incorrect ou expiré.')
     onOk()
@@ -23,7 +25,7 @@ export function Verification2FA({ onOk }: { onOk: () => void }) {
       <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000" value={code} onChange={e => setCode(e.target.value)} required />
       {erreur && <p className="erreur">{erreur}</p>}
       <button type="submit">Valider</button>
-      <button type="button" className="lien" onClick={() => supabase.auth.signOut()}>Annuler</button>
+      <button type="button" className="lien" onClick={() => seDeconnecter()}>Annuler</button>
     </form>
   )
 }
@@ -46,7 +48,7 @@ export function Securite() {
 
   async function activer() {
     const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `VDCoach ${Date.now()}` })
-    if (error) return setMessage(error.message)
+    if (error) return setMessage(messageErreur(error))
     setMessage('')
     setEnrol({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret })
   }
@@ -65,7 +67,7 @@ export function Securite() {
   async function desactiver() {
     if (!facteur || !window.confirm('Désactiver la double authentification ?')) return
     const { error } = await supabase.auth.mfa.unenroll({ factorId: facteur.id })
-    if (error) return setMessage(error.message)
+    if (error) return setMessage(messageErreur(error))
     setMessage('Double authentification désactivée.')
     charger()
   }

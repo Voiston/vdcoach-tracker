@@ -106,3 +106,7 @@ header button.lien { color: var(--discret); font-weight: 600; }
 .notification .lien { color: var(--accent-doux); font-weight: 700; }
 .notification .lien:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 @keyframes monter { from { opacity: 0; transform: translateY(8px); } }
+
+/* Erreurs et réseau */
+.erreur-bloc { display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; margin: .5rem 0; }
+.hors-ligne { position: sticky; top: calc(3.1rem + env(safe-area-inset-top)); z-index: 4; margin: .25rem 1.25rem 0; padding: .6rem .9rem; font-size: .9rem; background: var(--alerte-fond); color: var(--alerte-texte); border-radius: 14px; }

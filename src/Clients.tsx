@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, useNotifier, useOccupe } from './ui'
+import { messageErreur } from './erreurs'
+import { EtatVide, MessageErreur, Squelette, useNotifier, useOccupe } from './ui'
 
 export type Client = {
   id: string
@@ -25,7 +26,7 @@ export default function Clients() {
   async function charger() {
     const { data, error } = await supabase.from('clients').select('*').order('prenom')
     setCharge(true)
-    if (error) setErreur(error.message)
+    if (error) setErreur(messageErreur(error))
     else setClients(data)
   }
 
@@ -41,7 +42,7 @@ export default function Clients() {
       objectifs: objectifs.trim() || null,
       points_attention: attention.trim() || null,
     })
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     setPrenom('')
     setNom('')
     setObjectifs('')
@@ -55,7 +56,7 @@ export default function Clients() {
     const texte = window.prompt("Points d'attention (blessures, contre-indications). Laisse vide pour effacer :", c.points_attention ?? '')
     if (texte === null) return
     const { error } = await supabase.from('clients').update({ points_attention: texte.trim() || null }).eq('id', c.id)
-    if (error) setErreur(error.message)
+    if (error) setErreur(messageErreur(error))
     else {
       charger()
       notifier("Points d'attention enregistrés")
@@ -78,7 +79,7 @@ export default function Clients() {
         <textarea placeholder="Points d'attention : blessures, contre-indications (facultatif)" value={attention} onChange={e => setAttention(e.target.value)} />
         <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
       </form>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={charger} />
       {!charge && <Squelette lignes={3} />}
       {charge && !clients.length && <EtatVide titre="Aucun client pour l'instant" texte="Ajoute ton premier client avec le formulaire ci-dessus." />}
       <ul className="liste" hidden={!charge}>

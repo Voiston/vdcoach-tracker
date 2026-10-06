@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, useAller, useNotifier } from './ui'
+import { messageErreur } from './erreurs'
+import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useNotifier } from './ui'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -80,7 +81,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     // En modification, on charge aussi les clients archivés.
     let q = supabase.from('clients').select('*')
     if (!seanceId) q = q.eq('actif', true)
-    q.order('prenom').then(({ data }) => {
+    q.order('prenom').then(({ data, error }) => {
+      if (error) return setErreur(messageErreur(error))
       setClients(data ?? [])
       setClientsPrets(true)
       if (!seanceId && data?.length) setClientId(data[0].id)
@@ -99,7 +101,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         .eq('id', seanceId)
         .single()
         .then(({ data, error }) => {
-          if (error || !data) return setErreur(error?.message ?? 'Séance introuvable.')
+          if (error || !data) return setErreur(error ? messageErreur(error) : 'Séance introuvable.')
           setClientId(data.client_id)
           setDate(data.date_seance)
           setDuree(txt(data.duree_min))
@@ -122,7 +124,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg)')
       .eq('id', id)
       .single()
-    if (error || !data) return setErreur(error?.message ?? 'Modèle introuvable.')
+    if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
     setLignes(versLignes(data.modele_exercices as Exo[]))
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
@@ -134,7 +136,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const nom = window.prompt('Nom du modèle (ex. Full body A) :')?.trim()
     if (!nom) return
     const { data, error } = await supabase.from('modeles').insert({ nom, duree_min: num(duree) }).select('id, nom').single()
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     const { error: erreurExos } = await supabase.from('modele_exercices').insert(
       exos.map((l, i) => ({
         modele_id: data.id,
@@ -147,7 +149,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     )
     if (erreurExos) {
       await supabase.from('modeles').delete().eq('id', data.id)
-      return setErreur(erreurExos.message)
+      return setErreur(messageErreur(erreurExos))
     }
     setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
     setErreur('')
@@ -220,7 +222,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(1)
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     if (!data?.length) return setErreur('Aucune séance précédente pour ce client.')
     setLignes(versLignes(data[0].exercices as Exo[]))
     setDuree(txt(data[0].duree_min))
@@ -242,10 +244,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     let id = seanceId
     if (id) {
       const { error } = await supabase.from('seances').update(champs).eq('id', id)
-      if (error) return echec(error.message)
+      if (error) return echec(messageErreur(error))
     } else {
       const { data, error } = await supabase.from('seances').insert(champs).select('id').single()
-      if (error) return echec(error.message)
+      if (error) return echec(messageErreur(error))
       id = data.id as string
     }
 
@@ -264,12 +266,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       const { error } = await supabase.from('exercices').insert(exercices)
       if (error) {
         if (!seanceId) await supabase.from('seances').delete().eq('id', id)
-        return echec(error.message)
+        return echec(messageErreur(error))
       }
     }
     if (anciens.length) {
       const { error } = await supabase.from('exercices').delete().in('id', anciens)
-      if (error) return echec(error.message)
+      if (error) return echec(messageErreur(error))
     }
     setEnvoi(false)
     notifier(seanceId ? 'Séance modifiée' : 'Séance enregistrée')
@@ -280,7 +282,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
   const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
 
-  if (!seanceId && !clientsPrets) return <Squelette lignes={4} />
+  if (!seanceId && !clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
   if (!seanceId && !clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   return (
@@ -325,7 +327,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       <button type="button" className="secondaire" onClick={enregistrerModele}>Enregistrer comme modèle</button>
 
       <textarea placeholder="Notes de séance" value={notes} onChange={e => setNotes(e.target.value)} />
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} />
       <button type="submit" disabled={envoi}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
     </form>
   )

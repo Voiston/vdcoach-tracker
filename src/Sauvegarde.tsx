@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
+import { messageErreur } from './erreurs'
 import { useNotifier } from './ui'
 
 type Ligne = Record<string, any>
@@ -15,7 +16,7 @@ async function toutes(table: string): Promise<Ligne[]> {
   const lignes: Ligne[] = []
   for (let debut = 0; ; debut += 1000) {
     const { data, error } = await supabase.from(table).select('*').order('id').range(debut, debut + 999)
-    if (error) throw error
+    if (error) throw new Error(messageErreur(error))
     lignes.push(...data)
     if (data.length < 1000) return lignes
   }
@@ -88,7 +89,7 @@ export default function Sauvegarde() {
       setEtat('')
     } catch (err) {
       setApercu(null)
-      setEtat(`Erreur : ${(err as Error).message}`)
+      setEtat('Erreur : ce fichier n’est pas une sauvegarde valide.')
     }
   }
 
@@ -102,7 +103,7 @@ export default function Sauvegarde() {
         const lignes = apercu[t]
         for (let i = 0; i < lignes.length; i += 500) {
           const { error } = await supabase.from(t).upsert(lignes.slice(i, i + 500), { onConflict: 'id' })
-          if (error) throw new Error(`${t} : ${error.message}`)
+          if (error) throw new Error(`${t} : ${messageErreur(error)}`)
         }
       }
       setApercu(null)

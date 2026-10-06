@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { messageErreur } from './erreurs'
+import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -25,7 +26,7 @@ export default function Bibliotheque() {
   async function charger() {
     const { data, error } = await supabase.from('bibliotheque_exercices').select('*').order('groupe').order('nom')
     setCharge(true)
-    if (error) setErreur(error.message)
+    if (error) setErreur(messageErreur(error))
     else setListe(data as Reference[])
   }
 
@@ -42,7 +43,7 @@ export default function Bibliotheque() {
     const { error } = form.id
       ? await supabase.from('bibliotheque_exercices').update(champs).eq('id', form.id)
       : await supabase.from('bibliotheque_exercices').insert(champs)
-    if (error) return setErreur(error.code === '23505' ? 'Un exercice porte déjà ce nom.' : error.message)
+    if (error) return setErreur(error.code === '23505' ? 'Un exercice porte déjà ce nom.' : messageErreur(error))
     setForm(null)
     setErreur('')
     charger()
@@ -58,7 +59,7 @@ export default function Bibliotheque() {
       effacer: async () => {
         const { error } = await supabase.from('bibliotheque_exercices').delete().eq('id', x.id)
         if (!error) charger()
-        return error?.message
+        return error
       },
     })
   }
@@ -68,7 +69,7 @@ export default function Bibliotheque() {
   return (
     <section>
       <h2>Exercices</h2>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={charger} />
 
       {form ? (
         <form onSubmit={e => lancer(() => enregistrer(e))}>

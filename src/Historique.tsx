@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { messageErreur } from './erreurs'
 import type { Client } from './Clients'
-import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier } from './ui'
+import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier } from './ui'
 
 type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }
 type Seance = {
@@ -45,7 +46,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
       .range(depuis, depuis + TAILLE - 1)
     setChargement(false)
     setPret(true)
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     const lignes = data as unknown as Seance[]
     setErreur('')
     setSeances(prec => (depuis === 0 ? lignes : [...prec, ...lignes]))
@@ -74,7 +75,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
       effacer: async () => {
         const { error } = await supabase.from('seances').delete().eq('id', s.id)
         if (!error) setSeances(prec => prec.filter(x => x.id !== s.id))
-        return error?.message
+        return error
       },
     })
   }
@@ -88,7 +89,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
         <option value="">Tous les clients</option>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={() => charger(0)} />
       {pret && !visibles.length && !erreur && (filtre
         ? <EtatVide titre="Aucune séance pour ce client" texte="Il n'a pas encore de séance enregistrée." action={{ libelle: 'Voir tous les clients', onClick: () => changerFiltre('') }} />
         : <EtatVide titre="Aucune séance pour l'instant" texte="Tes séances apparaîtront ici dès que tu en auras enregistré une." action={{ libelle: 'Enregistrer une séance', onClick: () => aller('seance') }} />)}

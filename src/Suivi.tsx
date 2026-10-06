@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { messageErreur } from './erreurs'
+import { ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import './suivi.css'
 import { TYPES } from './definitions'
@@ -64,7 +65,8 @@ export default function Suivi() {
   const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
-    supabase.from('clients').select('*').order('prenom').then(({ data }) => {
+    supabase.from('clients').select('*').order('prenom').then(({ data, error }) => {
+      if (error) return setErreur(messageErreur(error))
       setClients(data ?? [])
       setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
@@ -86,7 +88,7 @@ export default function Suivi() {
     ])
     setPret(true)
     const err = m.error ?? s.error
-    if (err) return setErreur(err.message)
+    if (err) return setErreur(messageErreur(err))
     setErreur('')
     setMesures(m.data as Mesure[])
     setSeances(s.data as unknown as SeanceExo[])
@@ -104,7 +106,7 @@ export default function Suivi() {
     const { error } = await supabase
       .from('mesures')
       .insert({ client_id: clientId, date_mesure: date, type, valeur: v, unite: TYPES[type].unite })
-    if (error) return setErreur(error.message)
+    if (error) return setErreur(messageErreur(error))
     setValeur('')
     charger()
     notifier('Mesure ajoutée')
@@ -119,12 +121,12 @@ export default function Suivi() {
       effacer: async () => {
         const { error } = await supabase.from('mesures').delete().eq('id', m.id)
         if (!error) charger()
-        return error?.message
+        return error
       },
     })
   }
 
-  if (!clientsPrets) return <Squelette lignes={4} />
+  if (!clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
   if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
@@ -181,7 +183,7 @@ export default function Suivi() {
       <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
-      {erreur && <p className="erreur">{erreur}</p>}
+      <MessageErreur message={erreur} reessayer={charger} />
 
       {!pret && <Squelette lignes={3} />}
       <div hidden={!pret}>
