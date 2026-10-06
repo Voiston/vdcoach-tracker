@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 
 export type Client = {
   id: string
@@ -17,9 +18,12 @@ export default function Clients() {
   const [objectifs, setObjectifs] = useState('')
   const [attention, setAttention] = useState('')
   const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
+  const [charge, setCharge] = useState(false)
 
   async function charger() {
     const { data, error } = await supabase.from('clients').select('*').order('prenom')
+    setCharge(true)
     if (error) setErreur(error.message)
     else setClients(data)
   }
@@ -61,15 +65,16 @@ export default function Clients() {
   return (
     <section>
       <h2>Clients</h2>
-      <form onSubmit={ajouter}>
+      <form onSubmit={e => lancer(() => ajouter(e))}>
         <input placeholder="Prénom" value={prenom} onChange={e => setPrenom(e.target.value)} required />
         <input placeholder="Nom (facultatif)" value={nom} onChange={e => setNom(e.target.value)} />
         <textarea placeholder="Objectifs (facultatif)" value={objectifs} onChange={e => setObjectifs(e.target.value)} />
         <textarea placeholder="Points d'attention : blessures, contre-indications (facultatif)" value={attention} onChange={e => setAttention(e.target.value)} />
-        <button type="submit">Ajouter le client</button>
+        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
       </form>
       {erreur && <p className="erreur">{erreur}</p>}
-      <ul className="liste">
+      {!charge && <Squelette lignes={3} />}
+      <ul className="liste" hidden={!charge}>
         {clients.map(c => (
           <li key={c.id} className={c.actif ? '' : 'inactif'}>
             <div>

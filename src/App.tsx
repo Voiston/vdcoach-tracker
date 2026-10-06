@@ -6,6 +6,7 @@ import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import SuiviHub from './SuiviHub'
 import Icone from './icones'
+import { EcranChargement } from './ui'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -45,9 +46,9 @@ export default function App() {
     setOnglet(o)
   }
 
-  if (session === undefined) return <p className="centre">Chargement…</p>
+  if (session === undefined) return <EcranChargement />
   if (!session) return <Connexion />
-  if (exige2fa === undefined) return <p className="centre">Chargement…</p>
+  if (exige2fa === undefined) return <EcranChargement />
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
   return (

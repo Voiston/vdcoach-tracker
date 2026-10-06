@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 
 type Modele = { id: string; nom: string; modele_exercices: { nom: string }[] }
 
@@ -7,9 +8,11 @@ type Modele = { id: string; nom: string; modele_exercices: { nom: string }[] }
 export default function Modeles() {
   const [modeles, setModeles] = useState<Modele[]>([])
   const [erreur, setErreur] = useState('')
+  const [charge, setCharge] = useState(false)
 
   async function charger() {
     const { data, error } = await supabase.from('modeles').select('id, nom, modele_exercices(nom)').order('nom')
+    setCharge(true)
     if (error) setErreur(error.message)
     else setModeles(data as unknown as Modele[])
   }
@@ -37,8 +40,9 @@ export default function Modeles() {
     <section>
       <h3>Modèles de séance</h3>
       {erreur && <p className="erreur">{erreur}</p>}
-      {!modeles.length && !erreur && <p className="meta">Aucun modèle. Crée-en un depuis l'onglet « Séance ».</p>}
-      <ul className="liste">
+      {charge && !modeles.length && !erreur && <p className="meta">Aucun modèle. Crée-en un depuis l'onglet « Séance ».</p>}
+      {!charge && !erreur && <Squelette lignes={2} />}
+      <ul className="liste" hidden={!charge}>
         {modeles.map(m => (
           <li key={m.id}>
             <div>

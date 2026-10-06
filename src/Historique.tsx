@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
+import { Squelette } from './ui'
 
 type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }
 type Seance = {
@@ -24,11 +25,13 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
   const [filtre, setFiltre] = useState(() => sessionStorage.getItem(CLE) ?? '')
   const [fin, setFin] = useState(false)
   const [chargement, setChargement] = useState(false)
+  const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
 
   // Charge une page de TAILLE séances à partir de l'indice « depuis » (0 = on repart du début)
   async function charger(depuis: number) {
     setChargement(true)
+    if (depuis === 0) setPret(false)
     let q = supabase
       .from('seances')
       .select('id, date_seance, duree_min, ressenti, notes, clients(prenom, nom), exercices(id, ordre, nom, series, repetitions, charge_kg)')
@@ -38,6 +41,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
       .order('created_at', { ascending: false })
       .range(depuis, depuis + TAILLE - 1)
     setChargement(false)
+    setPret(true)
     if (error) return setErreur(error.message)
     const lignes = data as unknown as Seance[]
     setErreur('')
@@ -73,8 +77,9 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       {erreur && <p className="erreur">{erreur}</p>}
-      {!seances.length && !erreur && !chargement && <p className="centre">Aucune séance enregistrée.</p>}
-      <ul className="liste">
+      {pret && !seances.length && !erreur && <p className="centre">Aucune séance enregistrée.</p>}
+      {!pret && !erreur && <Squelette lignes={4} />}
+      <ul className="liste" hidden={!pret}>
         {seances.map(s => (
           <li key={s.id}>
             <div>

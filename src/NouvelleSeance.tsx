@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette } from './ui'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -58,6 +59,7 @@ function FicheExercice({ b }: { b: Fiche }) {
 
 export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
   const [clients, setClients] = useState<Client[]>([])
+  const [clientsPrets, setClientsPrets] = useState(false)
   const [clientId, setClientId] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [duree, setDuree] = useState('')
@@ -78,6 +80,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!seanceId) q = q.eq('actif', true)
     q.order('prenom').then(({ data }) => {
       setClients(data ?? [])
+      setClientsPrets(true)
       if (!seanceId && data?.length) setClientId(data[0].id)
     })
 
@@ -273,6 +276,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
   const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
 
+  if (!seanceId && !clientsPrets) return <Squelette lignes={4} />
   if (!seanceId && !clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
 
   return (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TYPES, TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -14,6 +15,8 @@ const nombre = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.'
 
 export default function Objectifs() {
   const [clients, setClients] = useState<Client[]>([])
+  const [clientsPrets, setClientsPrets] = useState(false)
+  const [pret, setPret] = useState(false)
   const [clientId, setClientId] = useState('')
   const [objectifs, setObjectifs] = useState<Objectif[]>([])
   const [derniereMesure, setDerniereMesure] = useState<Record<string, number>>({}) // type → dernière valeur
@@ -25,10 +28,12 @@ export default function Objectifs() {
   const [cible, setCible] = useState('')
   const [echeance, setEcheance] = useState('')
   const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
       setClients(data ?? [])
+      setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
     })
     supabase.from('bibliotheque_exercices').select('nom').then(({ data }) =>
@@ -42,6 +47,7 @@ export default function Objectifs() {
       supabase.from('mesures').select('type, valeur').eq('client_id', clientId).order('date_mesure'),
       supabase.from('seances').select('exercices(nom, charge_kg)').eq('client_id', clientId),
     ])
+    setPret(true)
     const err = o.error ?? m.error ?? s.error
     if (err) return setErreur(err.message)
     setErreur('')
@@ -63,6 +69,7 @@ export default function Objectifs() {
   }
 
   useEffect(() => {
+    setPret(false)
     charger()
   }, [clientId])
 
@@ -104,6 +111,7 @@ export default function Objectifs() {
     else charger()
   }
 
+  if (!clientsPrets) return <Squelette lignes={4} />
   if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
 
   return (
@@ -114,7 +122,8 @@ export default function Objectifs() {
       </select>
       {erreur && <p className="erreur">{erreur}</p>}
 
-      <ul className="liste">
+      {!pret && <Squelette lignes={2} />}
+      <ul className="liste" hidden={!pret}>
         {objectifs.map(o => {
           const act = actuelle(o.source, o.reference)
           const total = o.valeur_cible - o.valeur_depart
@@ -140,10 +149,10 @@ export default function Objectifs() {
           )
         })}
       </ul>
-      {!objectifs.length && <p className="meta">Aucun objectif pour ce client.</p>}
+      {pret && !objectifs.length && <p className="meta">Aucun objectif pour ce client.</p>}
 
       <h3>Nouvel objectif</h3>
-      <form onSubmit={ajouter}>
+      <form onSubmit={e => lancer(() => ajouter(e))}>
         <select value={source} onChange={e => changerSource(e.target.value as Source)}>
           {(Object.keys(SOURCES) as Source[]).map(s => <option key={s} value={s}>{SOURCES[s]}</option>)}
         </select>
@@ -163,7 +172,7 @@ export default function Objectifs() {
         </div>
         <input type="date" value={echeance} onChange={e => setEcheance(e.target.value)} />
         <p className="meta">Le départ est proposé d'après les données du client ; l'échéance est facultative.</p>
-        <button type="submit">Ajouter l'objectif</button>
+        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}</button>
       </form>
     </section>
   )

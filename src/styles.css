@@ -83,3 +83,15 @@ header button.lien { color: var(--discret); font-weight: 600; }
 .centre { text-align: center; color: var(--discret); padding: 3rem 1rem; }
 .connexion { max-width: 24rem; margin: 14vh auto 0; padding: 1.75rem 1.5rem; background: var(--surface); border-radius: 28px; box-shadow: var(--ombre); }
 .connexion h1 { font-size: 2.1rem; color: var(--accent); margin-bottom: .25rem; }
+
+/* États de chargement */
+.squelette { margin-top: .75rem; background: var(--surface); border-radius: 20px; overflow: hidden; }
+.squelette-ligne { display: flex; flex-direction: column; gap: .55rem; padding: 1.1rem; }
+.squelette-ligne + .squelette-ligne { border-top: 1px solid var(--trait); }
+.squelette-ligne span { display: block; height: .9rem; width: 55%; border-radius: 6px; background: linear-gradient(90deg, var(--trait) 25%, color-mix(in srgb, var(--trait) 45%, var(--surface)) 50%, var(--trait) 75%); background-size: 200% 100%; animation: reflet 1.4s linear infinite; }
+.squelette-ligne span + span { width: 80%; height: .7rem; }
+@keyframes reflet { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.chargement { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 1rem; }
+.chargement h1 { font-size: 2.1rem; color: var(--accent); }
+.chargement .point { width: .65rem; height: .65rem; border-radius: 50%; background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; transform: scale(.75); } }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -16,9 +17,12 @@ export default function Bibliotheque() {
   const [recherche, setRecherche] = useState('')
   const [form, setForm] = useState<Formulaire | null>(null)
   const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
+  const [charge, setCharge] = useState(false)
 
   async function charger() {
     const { data, error } = await supabase.from('bibliotheque_exercices').select('*').order('groupe').order('nom')
+    setCharge(true)
     if (error) setErreur(error.message)
     else setListe(data as Reference[])
   }
@@ -57,7 +61,7 @@ export default function Bibliotheque() {
       {erreur && <p className="erreur">{erreur}</p>}
 
       {form ? (
-        <form onSubmit={enregistrer}>
+        <form onSubmit={e => lancer(() => enregistrer(e))}>
           <input placeholder="Nom de l'exercice" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required />
           <div className="ligne">
             <select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
@@ -69,7 +73,7 @@ export default function Bibliotheque() {
           </div>
           <textarea placeholder="Consignes de technique (facultatif)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
           <input type="url" placeholder="Lien vidéo (facultatif)" value={form.video_url} onChange={e => setForm({ ...form, video_url: e.target.value })} />
-          <button type="submit">{form.id ? 'Enregistrer' : "Ajouter l'exercice"}</button>
+          <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : form.id ? 'Enregistrer' : "Ajouter l'exercice"}</button>
           <button type="button" className="secondaire" onClick={() => { setForm(null); setErreur('') }}>Annuler</button>
         </form>
       ) : (
@@ -84,7 +88,8 @@ export default function Bibliotheque() {
         <input placeholder="Rechercher…" value={recherche} onChange={e => setRecherche(e.target.value)} />
       </div>
 
-      <ul className="liste">
+      {!charge && !erreur && <Squelette lignes={5} />}
+      <ul className="liste" hidden={!charge}>
         {affiches.map(x => (
           <li key={x.id}>
             <div>
@@ -100,7 +105,7 @@ export default function Bibliotheque() {
           </li>
         ))}
       </ul>
-      {!affiches.length && <p className="meta">Aucun exercice.</p>}
+      {charge && !affiches.length && <p className="meta">Aucun exercice.</p>}
     </section>
   )
 }

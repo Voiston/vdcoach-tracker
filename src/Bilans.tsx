@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -10,15 +11,19 @@ const CLES = Object.keys(TESTS)
 
 export default function Bilans() {
   const [clients, setClients] = useState<Client[]>([])
+  const [clientsPrets, setClientsPrets] = useState(false)
+  const [pret, setPret] = useState(false)
   const [clientId, setClientId] = useState('')
   const [resultats, setResultats] = useState<Resultat[]>([])
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [saisies, setSaisies] = useState<Record<string, string>>({})
   const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
       setClients(data ?? [])
+      setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
     })
   }, [])
@@ -31,12 +36,14 @@ export default function Bilans() {
       .eq('client_id', clientId)
       .in('type', CLES)
       .order('date_mesure')
+    setPret(true)
     if (error) return setErreur(error.message)
     setErreur('')
     setResultats((data ?? []).map(x => ({ ...x, valeur: Number(x.valeur) })))
   }
 
   useEffect(() => {
+    setPret(false)
     charger()
   }, [clientId])
 
@@ -60,6 +67,7 @@ export default function Bilans() {
     else charger()
   }
 
+  if (!clientsPrets) return <Squelette lignes={4} />
   if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
 
   // Initial (premier résultat) vs dernier, pour chaque test réalisé
@@ -79,6 +87,8 @@ export default function Bilans() {
       </select>
       {erreur && <p className="erreur">{erreur}</p>}
 
+      {!pret && <Squelette lignes={3} />}
+      <div hidden={!pret}>
       <h3>Initial → dernier bilan</h3>
       {comparaison.length ? (
         <ul className="liste">
@@ -111,7 +121,7 @@ export default function Bilans() {
       )}
 
       <h3>Nouveau bilan</h3>
-      <form onSubmit={enregistrer}>
+      <form onSubmit={e => lancer(() => enregistrer(e))}>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
         {CLES.map(cle => (
           <label key={cle} className="champ-test">
@@ -120,7 +130,7 @@ export default function Bilans() {
           </label>
         ))}
         <p className="meta">Remplis seulement les tests réalisés.</p>
-        <button type="submit">Enregistrer le bilan</button>
+        <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer le bilan'}</button>
       </form>
 
       {dates.length > 0 && (
@@ -141,6 +151,7 @@ export default function Bilans() {
           </ul>
         </>
       )}
+      </div>
     </section>
   )
 }

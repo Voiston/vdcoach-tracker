@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Squelette, useOccupe } from './ui'
 import type { Client } from './Clients'
 import './suivi.css'
 import { TYPES } from './definitions'
@@ -46,6 +47,8 @@ function Courbe({ points, unite }: { points: Point[]; unite: string }) {
 
 export default function Suivi() {
   const [clients, setClients] = useState<Client[]>([])
+  const [clientsPrets, setClientsPrets] = useState(false)
+  const [pret, setPret] = useState(false)
   const [clientId, setClientId] = useState('')
   const [mesures, setMesures] = useState<Mesure[]>([])
   const [seances, setSeances] = useState<SeanceExo[]>([])
@@ -55,10 +58,12 @@ export default function Suivi() {
   const [exo, setExo] = useState('')
   const [groupes, setGroupes] = useState<Record<string, string>>({}) // nom d'exercice (minuscules) → groupe
   const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
       setClients(data ?? [])
+      setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
     })
   }, [])
@@ -76,6 +81,7 @@ export default function Suivi() {
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
       supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
     ])
+    setPret(true)
     const err = m.error ?? s.error
     if (err) return setErreur(err.message)
     setErreur('')
@@ -84,6 +90,7 @@ export default function Suivi() {
   }
 
   useEffect(() => {
+    setPret(false)
     charger()
   }, [clientId])
 
@@ -106,6 +113,7 @@ export default function Suivi() {
     else charger()
   }
 
+  if (!clientsPrets) return <Squelette lignes={4} />
   if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
 
   // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
@@ -164,6 +172,8 @@ export default function Suivi() {
       </select>
       {erreur && <p className="erreur">{erreur}</p>}
 
+      {!pret && <Squelette lignes={3} />}
+      <div hidden={!pret}>
       <div className="stats">
         <div><strong>{seances.length}</strong><span>séances</span></div>
         <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
@@ -221,12 +231,12 @@ export default function Suivi() {
         {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
       </select>
       <Courbe points={pointsMesure} unite={TYPES[type].unite} />
-      <form onSubmit={ajouter}>
+      <form onSubmit={e => lancer(() => ajouter(e))}>
         <div className="ligne">
           <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           <input inputMode="decimal" placeholder={`Valeur (${TYPES[type].unite})`} value={valeur} onChange={e => setValeur(e.target.value)} />
         </div>
-        <button type="submit">Ajouter la mesure</button>
+        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
       </form>
       <ul className="liste">
         {[...mesuresType].reverse().slice(0, 5).map(m => (
@@ -236,6 +246,7 @@ export default function Suivi() {
           </li>
         ))}
       </ul>
+      </div>
     </section>
   )
 }
