@@ -32,7 +32,7 @@ function Courbe({ points, unite }: { points: Point[]; unite: string }) {
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="courbe" role="img" aria-label="Courbe de progression">
         <line x1={P} y1={H - P} x2={W - P} y2={H - P} className="axe" />
-        <path d={d} fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d={d} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         {points.map((p, i) => <circle key={i} cx={x(t[i])} cy={y(p.valeur)} r="3" fill="currentColor" />)}
         <text x={2} y={y(v1) + 4} fontSize="10">{hi}</text>
         <text x={2} y={y(v0) + 4} fontSize="10">{lo}</text>
@@ -232,7 +232,7 @@ export default function Suivi() {
         {[...mesuresType].reverse().slice(0, 5).map(m => (
           <li key={m.id}>
             <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
-            <button className="lien" onClick={() => supprimer(m)}>Supprimer</button>
+            <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
           </li>
         ))}
       </ul>

@@ -94,7 +94,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
               {s.notes && <p className="meta">{s.notes}</p>}
               <div className="ligne">
                 <button className="lien" onClick={() => onEdit(s.id)}>Modifier</button>
-                <button className="lien" onClick={() => supprimer(s)}>Supprimer</button>
+                <button className="lien danger" onClick={() => supprimer(s)}>Supprimer</button>
               </div>
             </div>
           </li>

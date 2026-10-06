@@ -135,7 +135,7 @@ export default function Bilans() {
                     {resultats.filter(r => r.date_mesure === d).map(r => `${TESTS[r.type].label} : ${r.valeur} ${TESTS[r.type].unite}`).join(' · ')}
                   </p>
                 </div>
-                <button className="lien" onClick={() => supprimerBilan(d)}>Supprimer</button>
+                <button className="lien danger" onClick={() => supprimerBilan(d)}>Supprimer</button>
               </li>
             ))}
           </ul>

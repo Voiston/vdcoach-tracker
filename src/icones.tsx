@@ -8,7 +8,7 @@ const CHEMINS: Record<string, string> = {
 
 export default function Icone({ nom }: { nom: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={CHEMINS[nom]} />
     </svg>
   )

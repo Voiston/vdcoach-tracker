@@ -135,7 +135,7 @@ export default function Objectifs() {
                   {atteint ? ' · 🎯 Atteint' : reste === null ? '' : reste >= 0 ? ` · ${reste} jour(s) restant(s)` : ` · échéance dépassée de ${-reste} j`}
                 </p>
               </div>
-              <button className="lien" onClick={() => supprimer(o)}>Supprimer</button>
+              <button className="lien danger" onClick={() => supprimer(o)}>Supprimer</button>
             </li>
           )
         })}

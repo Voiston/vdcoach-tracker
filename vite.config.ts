@@ -16,8 +16,8 @@ export default defineConfig({
         short_name: 'VDCoach',
         lang: 'fr',
         description: 'Suivi des séances de coaching',
-        theme_color: '#0b6b5f',
-        background_color: '#f4f5f3',
+        theme_color: '#2f7d6b',
+        background_color: '#f2f5f3',
         display: 'standalone',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },

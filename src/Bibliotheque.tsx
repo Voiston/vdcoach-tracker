@@ -89,13 +89,13 @@ export default function Bibliotheque() {
           <li key={x.id}>
             <div>
               <strong>{x.nom}</strong>
-              <p className="meta">{x.groupe} · {x.materiel}</p>
+              <div className="puces"><span className="puce">{x.groupe}</span><span className="puce neutre">{x.materiel}</span></div>
               {x.notes && <p>{x.notes}</p>}
               {lienSur(x.video_url) && <a href={lienSur(x.video_url)!} target="_blank" rel="noopener noreferrer">Vidéo</a>}
             </div>
             <div className="ligne">
               <button className="lien" onClick={() => { setForm({ id: x.id, nom: x.nom, groupe: x.groupe, materiel: x.materiel, notes: x.notes ?? '', video_url: x.video_url ?? '' }); setErreur('') }}>Modifier</button>
-              <button className="lien" onClick={() => supprimer(x)}>Supprimer</button>
+              <button className="lien danger" onClick={() => supprimer(x)}>Supprimer</button>
             </div>
           </li>
         ))}

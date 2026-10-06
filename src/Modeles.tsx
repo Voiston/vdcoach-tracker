@@ -47,7 +47,7 @@ export default function Modeles() {
             </div>
             <div className="ligne">
               <button className="lien" onClick={() => renommer(m)}>Renommer</button>
-              <button className="lien" onClick={() => supprimer(m)}>Supprimer</button>
+              <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
             </div>
           </li>
         ))}
