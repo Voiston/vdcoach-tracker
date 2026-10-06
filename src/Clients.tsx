@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, useNotifier, useOccupe } from './ui'
 
 export type Client = {
   id: string
@@ -19,6 +19,7 @@ export default function Clients() {
   const [attention, setAttention] = useState('')
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
+  const notifier = useNotifier()
   const [charge, setCharge] = useState(false)
 
   async function charger() {
@@ -47,6 +48,7 @@ export default function Clients() {
     setAttention('')
     setErreur('')
     charger()
+    notifier('Client ajouté')
   }
 
   async function modifierAttention(c: Client) {
@@ -54,12 +56,16 @@ export default function Clients() {
     if (texte === null) return
     const { error } = await supabase.from('clients').update({ points_attention: texte.trim() || null }).eq('id', c.id)
     if (error) setErreur(error.message)
-    else charger()
+    else {
+      charger()
+      notifier("Points d'attention enregistrés")
+    }
   }
 
   async function basculerActif(c: Client) {
     await supabase.from('clients').update({ actif: !c.actif }).eq('id', c.id)
     charger()
+    notifier(c.actif ? 'Client archivé' : 'Client réactivé')
   }
 
   return (
@@ -74,6 +80,7 @@ export default function Clients() {
       </form>
       {erreur && <p className="erreur">{erreur}</p>}
       {!charge && <Squelette lignes={3} />}
+      {charge && !clients.length && <EtatVide titre="Aucun client pour l'instant" texte="Ajoute ton premier client avec le formulaire ci-dessus." />}
       <ul className="liste" hidden={!charge}>
         {clients.map(c => (
           <li key={c.id} className={c.actif ? '' : 'inactif'}>

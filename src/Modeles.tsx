@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
 
 type Modele = { id: string; nom: string; modele_exercices: { nom: string }[] }
 
@@ -9,6 +9,8 @@ export default function Modeles() {
   const [modeles, setModeles] = useState<Modele[]>([])
   const [erreur, setErreur] = useState('')
   const [charge, setCharge] = useState(false)
+  const notifier = useNotifier()
+  const [masques, setMasques] = useState<string[]>([])
 
   async function charger() {
     const { data, error } = await supabase.from('modeles').select('id, nom, modele_exercices(nom)').order('nom')
@@ -26,24 +28,32 @@ export default function Modeles() {
     if (!nom || nom === m.nom) return
     const { error } = await supabase.from('modeles').update({ nom }).eq('id', m.id)
     if (error) setErreur(error.message)
-    else charger()
+    else {
+      charger()
+      notifier('Modèle renommé')
+    }
   }
 
-  async function supprimer(m: Modele) {
-    if (!window.confirm(`Supprimer le modèle « ${m.nom} » ?`)) return
-    const { error } = await supabase.from('modeles').delete().eq('id', m.id)
-    if (error) setErreur(error.message)
-    else charger()
+  function supprimer(m: Modele) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `Modèle « ${m.nom} » supprimé`,
+      masquer: () => setMasques(l => [...l, m.id]),
+      restaurer: () => setMasques(l => l.filter(id => id !== m.id)),
+      effacer: async () => (await supabase.from('modeles').delete().eq('id', m.id)).error?.message,
+    })
   }
+
+  const visibles = modeles.filter(m => !masques.includes(m.id))
 
   return (
     <section>
       <h3>Modèles de séance</h3>
       {erreur && <p className="erreur">{erreur}</p>}
-      {charge && !modeles.length && !erreur && <p className="meta">Aucun modèle. Crée-en un depuis l'onglet « Séance ».</p>}
+      {charge && !visibles.length && !erreur && <EtatVide titre="Aucun modèle" texte="Dans l'onglet Séance, saisis tes exercices puis touche « Enregistrer comme modèle »." />}
       {!charge && !erreur && <Squelette lignes={2} />}
       <ul className="liste" hidden={!charge}>
-        {modeles.map(m => (
+        {visibles.map(m => (
           <li key={m.id}>
             <div>
               <strong>{m.nom}</strong>

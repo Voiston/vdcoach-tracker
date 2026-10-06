@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
+import { useNotifier } from './ui'
 
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
@@ -33,6 +34,7 @@ const cellule = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
 
 export default function Sauvegarde() {
   const [etat, setEtat] = useState('')
+  const notifier = useNotifier()
   const [derniere, setDerniere] = useState<string | null>(localStorage.getItem(CLE))
   const [apercu, setApercu] = useState<Donnees | null>(null)
   const jours = derniere ? Math.floor((Date.now() - Date.parse(derniere)) / 86_400_000) : null
@@ -67,6 +69,7 @@ export default function Sauvegarde() {
         telecharger(`vdcoach-seances-${jour}.csv`, '\uFEFF' + [entete, ...lignes].join('\r\n'), 'text/csv;charset=utf-8')
       }
       setEtat('Export terminé.')
+      notifier('Fichier téléchargé')
     } catch (e) {
       setEtat(`Erreur : ${(e as Error).message}`)
     }
@@ -104,6 +107,7 @@ export default function Sauvegarde() {
       }
       setApercu(null)
       setEtat('Restauration terminée.')
+      notifier('Données restaurées')
     } catch (e) {
       setEtat(`Erreur : ${(e as Error).message}`)
     }

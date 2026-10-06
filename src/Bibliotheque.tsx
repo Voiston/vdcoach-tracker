@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -19,6 +19,8 @@ export default function Bibliotheque() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const [charge, setCharge] = useState(false)
+  const notifier = useNotifier()
+  const [masques, setMasques] = useState<string[]>([])
 
   async function charger() {
     const { data, error } = await supabase.from('bibliotheque_exercices').select('*').order('groupe').order('nom')
@@ -44,16 +46,24 @@ export default function Bibliotheque() {
     setForm(null)
     setErreur('')
     charger()
+    notifier(form.id ? 'Exercice modifié' : 'Exercice ajouté')
   }
 
-  async function supprimer(x: Reference) {
-    if (!window.confirm(`Supprimer « ${x.nom} » de la bibliothèque ? Les séances déjà enregistrées ne changent pas.`)) return
-    const { error } = await supabase.from('bibliotheque_exercices').delete().eq('id', x.id)
-    if (error) setErreur(error.message)
-    else charger()
+  function supprimer(x: Reference) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `« ${x.nom} » supprimé`,
+      masquer: () => setMasques(l => [...l, x.id]),
+      restaurer: () => setMasques(l => l.filter(id => id !== x.id)),
+      effacer: async () => {
+        const { error } = await supabase.from('bibliotheque_exercices').delete().eq('id', x.id)
+        if (!error) charger()
+        return error?.message
+      },
+    })
   }
 
-  const affiches = liste.filter(x => (!groupe || x.groupe === groupe) && x.nom.toLowerCase().includes(recherche.trim().toLowerCase()))
+  const affiches = liste.filter(x => !masques.includes(x.id) && (!groupe || x.groupe === groupe) && x.nom.toLowerCase().includes(recherche.trim().toLowerCase()))
 
   return (
     <section>
@@ -105,7 +115,9 @@ export default function Bibliotheque() {
           </li>
         ))}
       </ul>
-      {charge && !affiches.length && <p className="meta">Aucun exercice.</p>}
+      {charge && !affiches.length && (liste.length
+        ? <EtatVide titre="Aucun exercice trouvé" texte="Essaie une autre recherche ou un autre groupe." action={{ libelle: 'Réinitialiser les filtres', onClick: () => { setGroupe(''); setRecherche('') } }} />
+        : <EtatVide titre="Bibliothèque vide" texte="Ajoute tes exercices pour les retrouver en séance." action={{ libelle: 'Ajouter un exercice', onClick: () => setForm(vide()) }} />)}
     </section>
   )
 }

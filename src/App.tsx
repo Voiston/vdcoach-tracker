@@ -6,7 +6,7 @@ import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import SuiviHub from './SuiviHub'
 import Icone from './icones'
-import { EcranChargement } from './ui'
+import { EcranChargement, NavigationCtx } from './ui'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -52,6 +52,7 @@ export default function App() {
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
   return (
+    <NavigationCtx.Provider value={o => aller(o as Onglet)}>
     <div className="app">
       <header>
         <h1>VDCoach</h1>
@@ -85,6 +86,7 @@ export default function App() {
         ))}
       </nav>
     </div>
+    </NavigationCtx.Provider>
   )
 }
 

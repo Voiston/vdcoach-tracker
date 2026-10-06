@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -19,6 +19,9 @@ export default function Bilans() {
   const [saisies, setSaisies] = useState<Record<string, string>>({})
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
+  const notifier = useNotifier()
+  const aller = useAller()
+  const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
@@ -58,26 +61,36 @@ export default function Bilans() {
     if (error) return setErreur(error.message)
     setSaisies({})
     charger()
+    notifier('Bilan enregistré')
   }
 
-  async function supprimerBilan(d: string) {
-    if (!window.confirm(`Supprimer tous les résultats du bilan du ${courte(d)} ?`)) return
-    const { error } = await supabase.from('mesures').delete().eq('client_id', clientId).eq('date_mesure', d).in('type', CLES)
-    if (error) setErreur(error.message)
-    else charger()
+  function supprimerBilan(d: string) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `Bilan du ${courte(d)} supprimé`,
+      masquer: () => setMasquees(l => [...l, d]),
+      restaurer: () => setMasquees(l => l.filter(x => x !== d)),
+      effacer: async () => {
+        const { error } = await supabase.from('mesures').delete().eq('client_id', clientId).eq('date_mesure', d).in('type', CLES)
+        if (!error) charger()
+        return error?.message
+      },
+    })
   }
 
   if (!clientsPrets) return <Squelette lignes={4} />
-  if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
+  if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
+
+  const visibles = resultats.filter(r => !masquees.includes(r.date_mesure))
 
   // Initial (premier résultat) vs dernier, pour chaque test réalisé
   const comparaison = CLES.flatMap(cle => {
-    const l = resultats.filter(x => x.type === cle)
+    const l = visibles.filter(x => x.type === cle)
     return l.length ? [{ cle, t: TESTS[cle], premier: l[0], dernier: l[l.length - 1], n: l.length }] : []
   })
 
   // Historique groupé par date de bilan (le plus récent d'abord)
-  const dates = [...new Set(resultats.map(r => r.date_mesure))].sort().reverse()
+  const dates = [...new Set(visibles.map(r => r.date_mesure))].sort().reverse()
 
   return (
     <section>
@@ -117,7 +130,7 @@ export default function Bilans() {
           })}
         </ul>
       ) : (
-        <p className="meta">Aucun bilan pour ce client.</p>
+        <EtatVide titre="Aucun bilan" texte="Fais un premier bilan pour avoir un point de départ à comparer plus tard." />
       )}
 
       <h3>Nouveau bilan</h3>
@@ -142,7 +155,7 @@ export default function Bilans() {
                 <div>
                   <strong>{courte(d)}</strong>
                   <p className="meta">
-                    {resultats.filter(r => r.date_mesure === d).map(r => `${TESTS[r.type].label} : ${r.valeur} ${TESTS[r.type].unite}`).join(' · ')}
+                    {visibles.filter(r => r.date_mesure === d).map(r => `${TESTS[r.type].label} : ${r.valeur} ${TESTS[r.type].unite}`).join(' · ')}
                   </p>
                 </div>
                 <button className="lien danger" onClick={() => supprimerBilan(d)}>Supprimer</button>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette } from './ui'
+import { EtatVide, Squelette, useAller, useNotifier } from './ui'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -60,6 +60,8 @@ function FicheExercice({ b }: { b: Fiche }) {
 export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [clientsPrets, setClientsPrets] = useState(false)
+  const notifier = useNotifier()
+  const aller = useAller()
   const [clientId, setClientId] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [duree, setDuree] = useState('')
@@ -149,6 +151,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     }
     setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
     setErreur('')
+    notifier(`Modèle « ${nom} » enregistré`)
   }
 
   useEffect(() => {
@@ -269,6 +272,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       if (error) return echec(error.message)
     }
     setEnvoi(false)
+    notifier(seanceId ? 'Séance modifiée' : 'Séance enregistrée')
     onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
 
@@ -277,7 +281,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
 
   if (!seanceId && !clientsPrets) return <Squelette lignes={4} />
-  if (!seanceId && !clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
+  if (!seanceId && !clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   return (
     <form onSubmit={enregistrer}>

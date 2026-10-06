@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
-import { Squelette } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier } from './ui'
 
 type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }
 type Seance = {
@@ -27,6 +27,9 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
   const [chargement, setChargement] = useState(false)
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
+  const notifier = useNotifier()
+  const aller = useAller()
+  const [masquees, setMasquees] = useState<string[]>([])
 
   // Charge une page de TAILLE séances à partir de l'indice « depuis » (0 = on repart du début)
   async function charger(depuis: number) {
@@ -62,12 +65,21 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
     setFiltre(v)
   }
 
-  async function supprimer(s: Seance) {
-    if (!window.confirm(`Supprimer la séance de ${s.clients?.prenom} du ${dateFr(s.date_seance)} ?`)) return
-    const { error } = await supabase.from('seances').delete().eq('id', s.id)
-    if (error) setErreur(error.message)
-    else charger(0)
+  function supprimer(s: Seance) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `Séance de ${s.clients?.prenom} supprimée`,
+      masquer: () => setMasquees(l => [...l, s.id]),
+      restaurer: () => setMasquees(l => l.filter(id => id !== s.id)),
+      effacer: async () => {
+        const { error } = await supabase.from('seances').delete().eq('id', s.id)
+        if (!error) setSeances(prec => prec.filter(x => x.id !== s.id))
+        return error?.message
+      },
+    })
   }
+
+  const visibles = seances.filter(s => !masquees.includes(s.id))
 
   return (
     <section>
@@ -77,10 +89,12 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       {erreur && <p className="erreur">{erreur}</p>}
-      {pret && !seances.length && !erreur && <p className="centre">Aucune séance enregistrée.</p>}
+      {pret && !visibles.length && !erreur && (filtre
+        ? <EtatVide titre="Aucune séance pour ce client" texte="Il n'a pas encore de séance enregistrée." action={{ libelle: 'Voir tous les clients', onClick: () => changerFiltre('') }} />
+        : <EtatVide titre="Aucune séance pour l'instant" texte="Tes séances apparaîtront ici dès que tu en auras enregistré une." action={{ libelle: 'Enregistrer une séance', onClick: () => aller('seance') }} />)}
       {!pret && !erreur && <Squelette lignes={4} />}
       <ul className="liste" hidden={!pret}>
-        {seances.map(s => (
+        {visibles.map(s => (
           <li key={s.id}>
             <div>
               <strong>{s.clients?.prenom} {s.clients?.nom}</strong>

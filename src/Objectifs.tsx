@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TYPES, TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -29,6 +29,9 @@ export default function Objectifs() {
   const [echeance, setEcheance] = useState('')
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
+  const notifier = useNotifier()
+  const aller = useAller()
+  const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
@@ -102,17 +105,27 @@ export default function Objectifs() {
     setEcheance('')
     setErreur('')
     charger()
+    notifier('Objectif ajouté')
   }
 
-  async function supprimer(o: Objectif) {
-    if (!window.confirm(`Supprimer l'objectif « ${libelle(o.source, o.reference)} » ?`)) return
-    const { error } = await supabase.from('objectifs').delete().eq('id', o.id)
-    if (error) setErreur(error.message)
-    else charger()
+  function supprimer(o: Objectif) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `Objectif « ${libelle(o.source, o.reference)} » supprimé`,
+      masquer: () => setMasquees(l => [...l, o.id]),
+      restaurer: () => setMasquees(l => l.filter(id => id !== o.id)),
+      effacer: async () => {
+        const { error } = await supabase.from('objectifs').delete().eq('id', o.id)
+        if (!error) charger()
+        return error?.message
+      },
+    })
   }
 
   if (!clientsPrets) return <Squelette lignes={4} />
-  if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
+  if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
+
+  const visibles = objectifs.filter(o => !masquees.includes(o.id))
 
   return (
     <section>
@@ -124,7 +137,7 @@ export default function Objectifs() {
 
       {!pret && <Squelette lignes={2} />}
       <ul className="liste" hidden={!pret}>
-        {objectifs.map(o => {
+        {visibles.map(o => {
           const act = actuelle(o.source, o.reference)
           const total = o.valeur_cible - o.valeur_depart
           const pct = act === null ? 0 : Math.max(0, Math.min(100, ((act - o.valeur_depart) / total) * 100))
@@ -149,7 +162,7 @@ export default function Objectifs() {
           )
         })}
       </ul>
-      {pret && !objectifs.length && <p className="meta">Aucun objectif pour ce client.</p>}
+      {pret && !visibles.length && <EtatVide titre="Aucun objectif" texte="Fixe une cible chiffrée (poids, charge, test physique) et suis la progression ici." />}
 
       <h3>Nouvel objectif</h3>
       <form onSubmit={e => lancer(() => ajouter(e))}>

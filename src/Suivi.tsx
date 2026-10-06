@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { Squelette, useOccupe } from './ui'
+import { EtatVide, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import './suivi.css'
 import { TYPES } from './definitions'
@@ -59,6 +59,9 @@ export default function Suivi() {
   const [groupes, setGroupes] = useState<Record<string, string>>({}) // nom d'exercice (minuscules) → groupe
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
+  const notifier = useNotifier()
+  const aller = useAller()
+  const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
     supabase.from('clients').select('*').order('prenom').then(({ data }) => {
@@ -104,17 +107,25 @@ export default function Suivi() {
     if (error) return setErreur(error.message)
     setValeur('')
     charger()
+    notifier('Mesure ajoutée')
   }
 
-  async function supprimer(m: Mesure) {
-    if (!window.confirm(`Supprimer la mesure du ${courte(m.date_mesure)} ?`)) return
-    const { error } = await supabase.from('mesures').delete().eq('id', m.id)
-    if (error) setErreur(error.message)
-    else charger()
+  function supprimer(m: Mesure) {
+    supprimerAvecAnnulation({
+      notifier,
+      message: `Mesure du ${courte(m.date_mesure)} supprimée`,
+      masquer: () => setMasquees(l => [...l, m.id]),
+      restaurer: () => setMasquees(l => l.filter(id => id !== m.id)),
+      effacer: async () => {
+        const { error } = await supabase.from('mesures').delete().eq('id', m.id)
+        if (!error) charger()
+        return error?.message
+      },
+    })
   }
 
   if (!clientsPrets) return <Squelette lignes={4} />
-  if (!clients.length) return <p className="centre">Ajoute d'abord un client dans l'onglet « Clients ».</p>
+  if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
   const noms = [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort()
@@ -239,7 +250,7 @@ export default function Suivi() {
         <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
       </form>
       <ul className="liste">
-        {[...mesuresType].reverse().slice(0, 5).map(m => (
+        {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (
           <li key={m.id}>
             <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
             <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
