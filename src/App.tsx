@@ -5,6 +5,7 @@ import Clients from './Clients'
 import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import SuiviHub from './SuiviHub'
+import Icone from './icones'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -76,8 +77,9 @@ export default function App() {
       </main>
       <nav>
         {(Object.keys(LIBELLES) as Onglet[]).map(o => (
-          <button key={o} className={o === onglet ? 'actif' : ''} onClick={() => aller(o)}>
-            {LIBELLES[o]}
+          <button key={o} className={o === onglet ? 'actif' : ''} aria-current={o === onglet ? 'page' : undefined} onClick={() => aller(o)}>
+            <Icone nom={o} />
+            <span>{LIBELLES[o]}</span>
           </button>
         ))}
       </nav>

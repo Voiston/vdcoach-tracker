@@ -31,9 +31,9 @@ function Courbe({ points, unite }: { points: Point[]; unite: string }) {
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="courbe" role="img" aria-label="Courbe de progression">
-        <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#d4d4d8" />
-        <path d={d} fill="none" stroke="#0f766e" strokeWidth="2" />
-        {points.map((p, i) => <circle key={i} cx={x(t[i])} cy={y(p.valeur)} r="3" fill="#0f766e" />)}
+        <line x1={P} y1={H - P} x2={W - P} y2={H - P} className="axe" />
+        <path d={d} fill="none" stroke="currentColor" strokeWidth="2" />
+        {points.map((p, i) => <circle key={i} cx={x(t[i])} cy={y(p.valeur)} r="3" fill="currentColor" />)}
         <text x={2} y={y(v1) + 4} fontSize="10">{hi}</text>
         <text x={2} y={y(v0) + 4} fontSize="10">{lo}</text>
         <text x={P} y={H - 8} fontSize="10">{courte(points[0].date)}</text>

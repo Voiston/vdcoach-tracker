@@ -1,25 +1,35 @@
-.courbe { width: 100%; height: auto; background: #fff; border: 1px solid var(--bord); border-radius: 8px; }
-.courbe text { fill: #52525b; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .8rem 0; }
-.stats div { background: #fff; border: 1px solid var(--bord); border-radius: 8px; padding: .6rem; text-align: center; }
-.stats strong { display: block; font-size: 1.2rem; color: var(--c); }
-.stats span { font-size: .8rem; color: #52525b; }
-section h3 { margin: 1.2rem 0 .5rem; }
-.attention { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: .5rem .7rem; margin: .3rem 0; color: #78350f; }
-.bandeau { background: #ecfdf5; border: 1px solid var(--c); border-radius: 8px; padding: .7rem; margin: 0 0 1rem; cursor: pointer; }
-.app nav button { font-size: .85rem; padding: 1rem .2rem; }
-.barres { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .4rem; }
-.barres li { display: grid; grid-template-columns: 7rem 1fr 2rem; gap: .5rem; align-items: center; font-size: .9rem; }
-.barres div { background: #e4e4e7; height: .6rem; border-radius: 4px; overflow: hidden; }
-.barres i { display: block; height: 100%; background: var(--c); }
+.courbe { width: 100%; height: auto; color: var(--sapin); background: var(--surface); border: 1px solid var(--trait); border-radius: var(--rayon-bloc); }
+.courbe text { fill: var(--discret); }
+.courbe .axe { stroke: var(--trait); }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: 1rem 0; }
+.stats div { padding: .75rem .25rem; text-align: center; background: var(--surface); border: 1px solid var(--trait); border-top: 3px solid var(--sapin); border-radius: var(--rayon); }
+.stats strong { display: block; font-family: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; font-size: clamp(1.4rem, 7vw, 2rem); font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.stats span { font-size: .8125rem; color: var(--discret); }
+
+.segments { display: flex; gap: .3rem; margin-bottom: 1.25rem; padding: .25rem; background: var(--trait); border-radius: var(--rayon-bloc); }
+.segments button { flex: 1; min-height: 2.5rem; background: transparent; color: var(--encre); }
+.segments button:hover { background: transparent; }
+.segments button.actif { background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .15); }
+
+.barres { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+.barres li { display: grid; grid-template-columns: 7rem 1fr 2rem; gap: .5rem; align-items: center; font-size: .9375rem; }
+.barres div { height: .6rem; background: var(--trait); border-radius: 999px; overflow: hidden; }
+.barres i { display: block; height: 100%; background: var(--sapin); }
 .barres b { text-align: right; }
-.segments { display: flex; gap: .3rem; margin-bottom: 1rem; }
-.segments button { flex: 1; background: #e4e4e7; color: #18181b; }
-.segments button.actif { background: var(--c); color: #fff; }
+
 .objectif { flex: 1; }
-.jauge { background: #e4e4e7; height: .8rem; border-radius: 6px; overflow: hidden; margin: .4rem 0 .2rem; }
-.jauge i { display: block; height: 100%; background: var(--c); }
-.jauge.atteint i { background: #16a34a; }
-.bien { color: #15803d; font-weight: 600; }
-.mal { color: #b91c1c; font-weight: 600; }
+.jauge { height: .75rem; margin: .5rem 0 .25rem; background: var(--trait); border-radius: 999px; overflow: hidden; }
+.jauge i { display: block; height: 100%; background: var(--sapin); border-radius: 999px; transition: width .4s; }
+.jauge.atteint i { background: var(--succes); }
+.bien { color: var(--succes); font-weight: 600; }
+.mal { color: var(--danger); font-weight: 600; }
 .champ-test { display: grid; grid-template-columns: 1fr 7rem; gap: .5rem; align-items: center; }
+
+.attention { padding: .55rem .75rem; margin-top: .4rem; background: var(--alerte-fond); border: 1px solid var(--alerte-trait); border-radius: var(--rayon); color: var(--alerte-texte); }
+.bandeau { padding: .75rem 1rem; margin-bottom: 1rem; background: color-mix(in srgb, var(--sapin) 12%, var(--surface)); border: 1px solid var(--sapin); border-radius: var(--rayon-bloc); cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+  button:active { transform: none; }
+}
