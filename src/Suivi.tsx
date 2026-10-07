@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
-import type { Client } from './Clients'
+import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
 import './suivi.css'
 import { TYPES } from './definitions'
-import { lireClient, memoriserClient } from './client-courant'
 
 const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
 
@@ -48,10 +46,8 @@ function Courbe({ points, unite }: { points: Point[]; unite: string }) {
 }
 
 export default function Suivi() {
-  const [clients, setClients] = useState<Client[]>([])
-  const [clientsPrets, setClientsPrets] = useState(false)
   const [pret, setPret] = useState(false)
-  const [clientId, setClientId] = useState('')
+  const clientId = useClient().id
   const [mesures, setMesures] = useState<Mesure[]>([])
   const [seances, setSeances] = useState<SeanceExo[]>([])
   const [type, setType] = useState('poids')
@@ -63,15 +59,6 @@ export default function Suivi() {
   const notifier = useNotifier()
   const aller = useAller()
   const [masquees, setMasquees] = useState<string[]>([])
-
-  useEffect(() => {
-    supabase.from('clients').select('*').order('prenom').then(({ data, error }) => {
-      if (error) return setErreur(messageErreur(error))
-      setClients(data ?? [])
-      setClientsPrets(true)
-      if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
-    })
-  }, [])
 
   async function charger() {
     if (!clientId) return
@@ -119,9 +106,6 @@ export default function Suivi() {
     })
   }
 
-  if (!clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
-  if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
-
   // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
   const noms = [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort()
   const exoChoisi = noms.includes(exo) ? exo : noms[0] ?? ''
@@ -159,10 +143,6 @@ export default function Suivi() {
 
   return (
     <section>
-      <h2>Suivi</h2>
-      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
-        {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
-      </select>
       <MessageErreur message={erreur} reessayer={charger} />
 
       {!pret && <Squelette lignes={3} />}

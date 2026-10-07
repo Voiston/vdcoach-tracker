@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
-import { Champ, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useNotifier } from './ui'
+import { Champ, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useClient, useNotifier } from './ui'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -61,13 +61,12 @@ function FicheExercice({ b }: { b: Fiche }) {
 }
 
 export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
-  const [clients, setClients] = useState<Client[]>([])
-  const [clientsPrets, setClientsPrets] = useState(false)
+  const client = useClient()
+  const clientId = client.id
   const notifier = useNotifier()
   const aller = useAller()
   const [feuilleModele, setFeuilleModele] = useState(false)
-  const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon()))
-  const [clientId, setClientId] = useState('')
+  const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [duree, setDuree] = useState('')
   const [ressenti, setRessenti] = useState('')
@@ -82,16 +81,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [envoi, setEnvoi] = useState(false)
 
   useEffect(() => {
-    // En modification, on charge aussi les clients archivés.
-    let q = supabase.from('clients').select('*')
-    if (!seanceId) q = q.eq('actif', true)
-    q.order('prenom').then(({ data, error }) => {
-      if (error) return setErreur(messageErreur(error))
-      setClients(data ?? [])
-      setClientsPrets(true)
-      if (!seanceId && data?.length) setClientId(data[0].id)
-    })
-
     supabase
       .from('exercices')
       .select('nom')
@@ -106,7 +95,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         .single()
         .then(({ data, error }) => {
           if (error || !data) return setErreur(error ? messageErreur(error) : 'Séance introuvable.')
-          setClientId(data.client_id)
           setDate(data.date_seance)
           setDuree(txt(data.duree_min))
           setRessenti(txt(data.ressenti))
@@ -222,7 +210,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   function reprendreBrouillon() {
     if (!brouillon) return
-    if (clients.some(c => c.id === brouillon.clientId)) setClientId(brouillon.clientId)
     setDate(brouillon.date)
     setDuree(brouillon.duree)
     setRessenti(brouillon.ressenti)
@@ -232,7 +219,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   function abandonnerBrouillon() {
-    effacerBrouillon()
+    effacerBrouillon(clientId)
     setBrouillon(null)
   }
 
@@ -300,19 +287,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       if (error) return echec(messageErreur(error))
     }
     setEnvoi(false)
-    if (!seanceId) effacerBrouillon()
+    if (!seanceId) effacerBrouillon(clientId)
     notifier(seanceId ? 'Séance modifiée' : 'Séance enregistrée')
     onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
 
   // Suggestions : exercices déjà saisis + bibliothèque (l'orthographe de la bibliothèque prime)
   const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
-  const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
   const invalide = verifier(duree, REGLES.duree) || verifier(ressenti, REGLES.ressenti)
     || lignes.some(l => verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
-
-  if (!seanceId && !clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
-  if (!seanceId && !clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   return (
     <>
@@ -322,7 +305,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         <div className="brouillon" role="status">
           <p>
             <strong>Séance en cours retrouvée</strong>
-            {clients.find(c => c.id === brouillon.clientId) ? ` pour ${clients.find(c => c.id === brouillon.clientId)?.prenom}` : ''}
             {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
           </p>
           <div className="ligne">
@@ -331,10 +313,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           </div>
         </div>
       )}
-      <Champ libelle="Client"><select value={clientId} onChange={e => setClientId(e.target.value)}>
-        {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
-      </select></Champ>
-      {pointsAttention && <p className="attention">⚠ {pointsAttention}</p>}
       <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
       <div className="ligne">
         <Champ libelle="Durée (min)" erreur={verifier(duree, REGLES.duree)}><input inputMode="numeric" value={duree} onChange={e => setDuree(e.target.value)} /></Champ>

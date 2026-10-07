@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useNotifier, useOccupe } from './ui'
+import { Champ, MessageErreur, useNotifier, useOccupe } from './ui'
 
 export type Client = {
   id: string
@@ -12,8 +12,7 @@ export type Client = {
   actif: boolean
 }
 
-export default function Clients() {
-  const [clients, setClients] = useState<Client[]>([])
+export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) => void; onAnnuler: () => void }) {
   const [prenom, setPrenom] = useState('')
   const [nom, setNom] = useState('')
   const [objectifs, setObjectifs] = useState('')
@@ -21,93 +20,33 @@ export default function Clients() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
-  const [edition, setEdition] = useState<Client | null>(null)
-  const [charge, setCharge] = useState(false)
 
-  async function charger() {
-    const { data, error } = await supabase.from('clients').select('*').order('prenom')
-    setCharge(true)
-    if (error) setErreur(messageErreur(error))
-    else setClients(data)
-  }
-
-  useEffect(() => {
-    charger()
-  }, [])
-
-  async function ajouter(e: React.FormEvent) {
+  async function creer(e: React.FormEvent) {
     e.preventDefault()
-    const { error } = await supabase.from('clients').insert({
-      prenom: prenom.trim(),
-      nom: nom.trim() || null,
-      objectifs: objectifs.trim() || null,
-      points_attention: attention.trim() || null,
-    })
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({ prenom: prenom.trim(), nom: nom.trim() || null, objectifs: objectifs.trim() || null, points_attention: attention.trim() || null })
+      .select('id')
+      .single()
     if (error) return setErreur(messageErreur(error))
-    setPrenom('')
-    setNom('')
-    setObjectifs('')
-    setAttention('')
-    setErreur('')
-    charger()
     notifier('Client ajouté')
-  }
-
-  async function enregistrerAttention(c: Client, texte: string): Promise<string | undefined> {
-    const { error } = await supabase.from('clients').update({ points_attention: texte || null }).eq('id', c.id)
-    if (error) return messageErreur(error)
-    charger()
-    notifier("Points d'attention enregistrés")
-  }
-
-  async function basculerActif(c: Client) {
-    await supabase.from('clients').update({ actif: !c.actif }).eq('id', c.id)
-    charger()
-    notifier(c.actif ? 'Client archivé' : 'Client réactivé')
+    onCree(data.id as string)
   }
 
   return (
-    <section>
-      <h2>Clients</h2>
-      <form onSubmit={e => lancer(() => ajouter(e))}>
-        <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required /></Champ>
-        <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
-        <Champ libelle="Objectifs (facultatif)"><textarea value={objectifs} onChange={e => setObjectifs(e.target.value)} /></Champ>
-        <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : un bandeau s'affiche à l'ouverture d'une séance."><textarea value={attention} onChange={e => setAttention(e.target.value)} /></Champ>
+    <form onSubmit={e => lancer(() => creer(e))}>
+      <h3>Nouveau client</h3>
+      <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required autoFocus /></Champ>
+      <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
+      <Champ libelle="Objectifs (facultatif)"><textarea value={objectifs} onChange={e => setObjectifs(e.target.value)} /></Champ>
+      <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : ils s'affichent en haut du profil du client.">
+        <textarea value={attention} onChange={e => setAttention(e.target.value)} />
+      </Champ>
+      <MessageErreur message={erreur} />
+      <div className="ligne">
+        <button type="button" className="secondaire" onClick={onAnnuler}>Annuler</button>
         <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
-      </form>
-      <MessageErreur message={erreur} reessayer={charger} />
-      {!charge && <Squelette lignes={3} />}
-      {charge && !clients.length && <EtatVide titre="Aucun client pour l'instant" texte="Ajoute ton premier client avec le formulaire ci-dessus." />}
-      <ul className="liste" hidden={!charge}>
-        {clients.map(c => (
-          <li key={c.id} className={c.actif ? '' : 'inactif'}>
-            <div>
-              <strong>{c.prenom} {c.nom}</strong>
-              {c.objectifs && <p>{c.objectifs}</p>}
-              {c.points_attention && <p className="attention">⚠ {c.points_attention}</p>}
-            </div>
-            <div className="ligne">
-              <button className="lien" onClick={() => setEdition(c)}>Attention</button>
-              <button className="lien" onClick={() => basculerActif(c)}>{c.actif ? 'Archiver' : 'Réactiver'}</button>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {edition && (
-        <FeuilleSaisie
-          titre={`Points d'attention : ${edition.prenom}`}
-          libelle="Blessures, douleurs, contre-indications"
-          valeur={edition.points_attention ?? ''}
-          multiligne
-          onFermer={() => setEdition(null)}
-          onValider={async texte => {
-            const e = await enregistrerAttention(edition, texte)
-            if (!e) setEdition(null)
-            return e
-          }}
-        />
-      )}
-    </section>
+      </div>
+    </form>
   )
 }

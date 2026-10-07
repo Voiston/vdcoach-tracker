@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import type { Client } from './Clients'
 import { messageErreur } from './erreurs'
-import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller } from './ui'
+import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-import { lireClient, memoriserClient } from './client-courant'
 
 type Reference = { nom: string; groupe: string; exercice_muscles: { muscle: string; coefficient: number }[] }
 type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null }[] }
@@ -17,9 +15,7 @@ const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle 
 
 export default function Muscles() {
   const aller = useAller()
-  const [clients, setClients] = useState<Client[]>([])
-  const [clientsPrets, setClientsPrets] = useState(false)
-  const [clientId, setClientId] = useState('')
+  const clientId = useClient().id
   const [jours, setJours] = useState(30)
   const [seances, setSeances] = useState<SeanceExo[]>([])
   const [biblio, setBiblio] = useState<Record<string, Reference> | null>(null)
@@ -27,12 +23,6 @@ export default function Muscles() {
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
-    supabase.from('clients').select('*').order('prenom').then(({ data, error }) => {
-      if (error) return setErreur(messageErreur(error))
-      setClients(data ?? [])
-      setClientsPrets(true)
-      if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
-    })
     supabase.from('bibliotheque_exercices').select('nom, groupe, exercice_muscles(muscle, coefficient)').then(({ data, error }) => {
       if (error) return setErreur(messageErreur(error))
       setBiblio(Object.fromEntries((data as Reference[]).map(x => [cle(x.nom), x])))
@@ -57,10 +47,6 @@ export default function Muscles() {
     setPret(false)
     charger()
   }, [clientId, jours])
-
-  if (!clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
-  if (!clients.length)
-    return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   // Séries pondérées par muscle : une série d'un exercice compte pour chaque muscle sollicité, selon son niveau.
   const parMuscle: Record<string, { total: number; principal: number; apports: Apport[] }> = {}
@@ -95,10 +81,6 @@ export default function Muscles() {
 
   return (
     <section>
-      <h2>Muscles sollicités</h2>
-      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
-        {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
-      </select>
       <div className="segments" role="group" aria-label="Période">
         {PERIODES.map(j => (
           <button key={j} type="button" className={j === jours ? 'actif' : ''} aria-pressed={j === jours} onClick={() => setJours(j)}>{j} jours</button>

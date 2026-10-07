@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
+import type { Client } from './Clients'
 
 /** Silhouettes grises animées, affichées pendant le chargement d'une liste. */
 export function Squelette({ lignes = 3 }: { lignes?: number }) {
@@ -230,3 +231,13 @@ export function FeuilleSaisie(props: {
     </div>
   )
 }
+
+/* ---------- Client courant (fourni par le profil client) ---------- */
+export const ClientCtx = createContext<{ client: Client; recharger: () => Promise<void> } | null>(null)
+
+export function useClientComplet() {
+  const c = useContext(ClientCtx)
+  if (!c) throw new Error('Cet écran doit être affiché dans le profil d’un client.')
+  return c
+}
+export const useClient = () => useClientComplet().client

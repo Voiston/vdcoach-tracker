@@ -143,3 +143,16 @@ main:focus { outline: none; }
 .segments button { padding-inline: .25rem; font-size: .9rem; }
 fieldset { display: flex; flex-direction: column; gap: .6rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700; color: var(--discret); }
+
+/* Profil client et accueil */
+.retour { align-self: flex-start; margin: -.5rem 0 .25rem -.75rem; }
+.profil-entete { display: flex; flex-direction: column; align-items: flex-start; gap: .6rem; }
+.profil-entete h2 { margin: 0; }
+.profil-entete .attention { align-self: stretch; margin: 0; }
+.rubriques { display: flex; gap: .4rem; margin: 1.25rem -1.25rem; padding: 0 1.25rem .25rem; overflow-x: auto; scrollbar-width: none; }
+.rubriques::-webkit-scrollbar { display: none; }
+.rubriques button { flex: none; min-height: 2.5rem; padding: .3rem 1rem; background: var(--surface); color: var(--discret); box-shadow: none; border-radius: 999px; }
+.rubriques button:hover { background: var(--accent-doux); }
+.rubriques button.actif { background: var(--accent); color: var(--sur-accent); }
+.liste li > .ligne-client { flex: 1; min-height: 3rem; padding: 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; text-align: left; background: none; color: var(--encre); font-weight: 500; box-shadow: none; }
+.liste li > .ligne-client:hover { background: none; }

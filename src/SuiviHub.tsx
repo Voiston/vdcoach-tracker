@@ -4,15 +4,15 @@ import Muscles from './Muscles'
 import Objectifs from './Objectifs'
 import Bilans from './Bilans'
 
-type Vue = 'progression' | 'muscles' | 'objectifs' | 'bilans'
+export type Vue = 'progression' | 'muscles' | 'objectifs' | 'bilans'
 const LIBELLES: Record<Vue, string> = { progression: 'Progression', muscles: 'Muscles', objectifs: 'Objectifs', bilans: 'Bilans' }
 
-export default function SuiviHub() {
-  const [vue, setVue] = useState<Vue>('progression')
+export default function SuiviHub({ vues }: { vues: Vue[] }) {
+  const [vue, setVue] = useState<Vue>(vues[0])
   return (
     <div>
       <div className="segments">
-        {(Object.keys(LIBELLES) as Vue[]).map(v => (
+        {vues.map(v => (
           <button key={v} className={v === vue ? 'actif' : ''} onClick={() => setVue(v)}>{LIBELLES[v]}</button>
         ))}
       </div>

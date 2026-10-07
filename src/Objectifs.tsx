@@ -2,10 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
-import type { Client } from './Clients'
+import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
 import { TYPES, TESTS } from './definitions'
-import { lireClient, memoriserClient } from './client-courant'
 
 type Source = 'mesure' | 'charge' | 'test'
 type Objectif = { id: string; source: Source; reference: string; valeur_depart: number; valeur_cible: number; echeance: string | null }
@@ -16,10 +14,8 @@ const libelle = (s: Source, ref: string) => (s === 'mesure' ? TYPES[ref]?.label 
 const nombre = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')))
 
 export default function Objectifs() {
-  const [clients, setClients] = useState<Client[]>([])
-  const [clientsPrets, setClientsPrets] = useState(false)
   const [pret, setPret] = useState(false)
-  const [clientId, setClientId] = useState('')
+  const clientId = useClient().id
   const [objectifs, setObjectifs] = useState<Objectif[]>([])
   const [derniereMesure, setDerniereMesure] = useState<Record<string, number>>({}) // type → dernière valeur
   const [meilleureCharge, setMeilleureCharge] = useState<Record<string, number>>({}) // exercice (minuscules) → charge max
@@ -36,12 +32,6 @@ export default function Objectifs() {
   const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
-    supabase.from('clients').select('*').order('prenom').then(({ data, error }) => {
-      if (error) return setErreur(messageErreur(error))
-      setClients(data ?? [])
-      setClientsPrets(true)
-      if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
-    })
     supabase.from('bibliotheque_exercices').select('nom').then(({ data }) =>
       setNoms(prec => [...new Set([...prec, ...(data ?? []).map(x => x.nom as string)])].sort()))
   }, [])
@@ -125,17 +115,10 @@ export default function Objectifs() {
     })
   }
 
-  if (!clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
-  if (!clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
-
   const visibles = objectifs.filter(o => !masquees.includes(o.id))
 
   return (
     <section>
-      <h2>Objectifs</h2>
-      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
-        {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
-      </select>
       <MessageErreur message={erreur} reessayer={charger} />
 
       {!pret && <Squelette lignes={2} />}

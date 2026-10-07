@@ -1,27 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import { seDeconnecter, deconnexionVolontaire } from './deconnexion'
+import { deconnexionVolontaire } from './deconnexion'
 import { MSG_SESSION, messageErreur } from './erreurs'
-import Clients from './Clients'
-import NouvelleSeance from './NouvelleSeance'
-import Historique from './Historique'
-import SuiviHub from './SuiviHub'
+import Accueil from './Accueil'
+import Profil, { type Rubrique } from './Profil'
+import Bibliotheque from './Bibliotheque'
+import Modeles from './Modeles'
+import Reglages from './Reglages'
 import Icone from './icones'
 import { BandeauReseau, Champ, EcranChargement, NavigationCtx } from './ui'
-import Bibliotheque from './Bibliotheque'
-import Sauvegarde from './Sauvegarde'
-import Modeles from './Modeles'
-import { Verification2FA, Securite } from './Auth2FA'
+import { Verification2FA } from './Auth2FA'
 
-type Onglet = 'seance' | 'historique' | 'suivi' | 'exercices' | 'clients'
-const LIBELLES: Record<Onglet, string> = { seance: 'Séance', historique: 'Historique', suivi: 'Suivi', exercices: 'Exercices', clients: 'Clients' }
+type Route =
+  | { page: 'clients' }
+  | { page: 'exercices' }
+  | { page: 'reglages' }
+  | { page: 'client'; clientId: string; rubrique: Rubrique; seanceId?: string | null }
+
+const ONGLETS = [
+  { page: 'clients', libelle: 'Clients' },
+  { page: 'exercices', libelle: 'Exercices' },
+  { page: 'reglages', libelle: 'Réglages' },
+] as const
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
-  const [onglet, setOnglet] = useState<Onglet>('seance')
+  const [route, setRoute] = useState<Route>({ page: 'clients' })
   const [sessionExpiree, setSessionExpiree] = useState(false)
-  const [edition, setEdition] = useState<string | null>(null) // id de la séance en cours de modification
   const [bandeau, setBandeau] = useState('') // message affiché après l'enregistrement (ex. nouveau record)
 
   useEffect(() => {
@@ -49,10 +55,10 @@ export default function App() {
 
   // Chaque changement d'écran est inscrit dans l'historique : le bouton « retour » du téléphone remonte d'un écran
   useEffect(() => {
-    history.replaceState({ onglet: 'seance', edition: null }, '')
+    const depart: Route = { page: 'clients' }
+    history.replaceState(depart, '')
     const retour = (e: PopStateEvent) => {
-      setOnglet((e.state?.onglet as Onglet) ?? 'seance')
-      setEdition(e.state?.edition ?? null)
+      setRoute((e.state as Route | null) ?? depart)
       setBandeau('')
       window.scrollTo({ top: 0 })
     }
@@ -68,19 +74,14 @@ export default function App() {
       return
     }
     document.querySelector('main')?.focus({ preventScroll: true })
-  }, [onglet, edition])
+  }, [JSON.stringify(route)])
 
-  function afficher(o: Onglet, id: string | null = null) {
-    setEdition(id)
+  function naviguer(r: Route) {
+    if (JSON.stringify(r) === JSON.stringify(route)) return window.scrollTo({ top: 0, behavior: 'smooth' })
+    setRoute(r)
     setBandeau('')
-    setOnglet(o)
     window.scrollTo({ top: 0 })
-    history.pushState({ onglet: o, edition: id }, '')
-  }
-
-  function aller(o: Onglet) {
-    if (o === onglet && !edition) return window.scrollTo({ top: 0, behavior: 'smooth' })
-    afficher(o)
+    history.pushState(r, '')
   }
 
   if (session === undefined) return <EcranChargement />
@@ -88,42 +89,54 @@ export default function App() {
   if (exige2fa === undefined) return <EcranChargement />
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
+  const onglet = route.page === 'client' ? 'clients' : route.page
+
   return (
-    <NavigationCtx.Provider value={o => aller(o as Onglet)}>
-    <div className="app">
-      <header>
-        <h1>VDCoach</h1>
-        <button className="lien" onClick={() => seDeconnecter()}>Déconnexion</button>
-      </header>
-      <BandeauReseau />
-      <main tabIndex={-1}>
-        {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
-        {onglet === 'seance' && (
-          <NouvelleSeance key={edition ?? 'nouvelle'} seanceId={edition} onSaved={m => { aller('historique'); setBandeau(m ?? '') }} />
-        )}
-        {onglet === 'historique' && (
-          <Historique onEdit={id => afficher('seance', id)} />
-        )}
-        {onglet === 'suivi' && <SuiviHub />}
-        {onglet === 'exercices' && <Bibliotheque />}
-        {onglet === 'clients' && (
-          <>
-            <Clients />
-            <Modeles />
-            <Sauvegarde />
-            <Securite />
-          </>
-        )}
-      </main>
-      <nav>
-        {(Object.keys(LIBELLES) as Onglet[]).map(o => (
-          <button key={o} className={o === onglet ? 'actif' : ''} aria-current={o === onglet ? 'page' : undefined} onClick={() => aller(o)}>
-            <Icone nom={o} />
-            <span>{LIBELLES[o]}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
+    <NavigationCtx.Provider value={o => naviguer({ page: o as 'clients' | 'exercices' | 'reglages' })}>
+      <div className="app">
+        <header>
+          <h1>VDCoach</h1>
+        </header>
+        <BandeauReseau />
+        <main tabIndex={-1}>
+          {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
+          {route.page === 'clients' && (
+            <Accueil
+              onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+              onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+            />
+          )}
+          {route.page === 'client' && (
+            <Profil
+              key={route.clientId}
+              clientId={route.clientId}
+              rubrique={route.rubrique}
+              seanceId={route.seanceId ?? null}
+              onRubrique={(rubrique, seanceId = null) => naviguer({ page: 'client', clientId: route.clientId, rubrique, seanceId })}
+              onRetour={() => naviguer({ page: 'clients' })}
+              onSaved={m => {
+                naviguer({ page: 'client', clientId: route.clientId, rubrique: 'seances' })
+                setBandeau(m ?? '')
+              }}
+            />
+          )}
+          {route.page === 'exercices' && (
+            <>
+              <Bibliotheque />
+              <Modeles />
+            </>
+          )}
+          {route.page === 'reglages' && <Reglages />}
+        </main>
+        <nav>
+          {ONGLETS.map(o => (
+            <button key={o.page} className={o.page === onglet ? 'actif' : ''} aria-current={o.page === onglet ? 'page' : undefined} onClick={() => naviguer({ page: o.page })}>
+              <Icone nom={o.page} />
+              <span>{o.libelle}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
     </NavigationCtx.Provider>
   )
 }
