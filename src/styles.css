@@ -127,3 +127,19 @@ main:focus { outline: none; }
 .brouillon { display: flex; flex-direction: column; gap: .6rem; padding: .85rem 1rem; background: var(--accent-doux); color: var(--accent-fonce); border-radius: 16px; }
 .mise-a-jour { position: fixed; top: calc(3.4rem + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 25; width: min(calc(100% - 1.5rem), 36rem); display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .6rem .55rem 1rem; background: var(--encre); color: var(--fond); border-radius: 14px; box-shadow: var(--ombre); }
 .mise-a-jour button { min-height: 2.5rem; padding: .3rem .9rem; }
+
+/* Muscles */
+.muscle-top { margin: .5rem 0 1rem; padding: .75rem 1rem; background: var(--accent-doux); color: var(--accent-fonce); border-radius: 16px; }
+.muscles { list-style: none; margin: .75rem 0; padding: 0; background: var(--surface); border-radius: 20px; overflow: hidden; }
+.muscles > li + li { border-top: 1px solid var(--trait); }
+.muscles summary { display: grid; grid-template-columns: 8.5rem 1fr 3rem; gap: .6rem; align-items: center; min-height: 3.25rem; padding: .6rem 1.1rem; cursor: pointer; list-style: none; }
+.muscles summary::-webkit-details-marker { display: none; }
+.muscles .barre { height: .6rem; background: var(--trait); border-radius: 999px; overflow: hidden; }
+.muscles .barre i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.muscles b { text-align: right; }
+.muscles details ul { list-style: none; margin: 0; padding: 0 1.1rem 1rem; display: flex; flex-direction: column; gap: .35rem; color: var(--discret); font-size: .9rem; }
+.puce.principal { background: var(--accent); color: var(--sur-accent); }
+.puce.stabilisateur { background: var(--trait); color: var(--discret); }
+.segments button { padding-inline: .25rem; font-size: .9rem; }
+fieldset { display: flex; flex-direction: column; gap: .6rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700; color: var(--discret); }

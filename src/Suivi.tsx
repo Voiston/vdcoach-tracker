@@ -58,7 +58,6 @@ export default function Suivi() {
   const [valeur, setValeur] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [exo, setExo] = useState('')
-  const [groupes, setGroupes] = useState<Record<string, string>>({}) // nom d'exercice (minuscules) → groupe
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
@@ -72,13 +71,6 @@ export default function Suivi() {
       setClientsPrets(true)
       if (data?.length) setClientId(data.some(c => c.id === lireClient()) ? lireClient() : data[0].id)
     })
-  }, [])
-
-  useEffect(() => {
-    supabase
-      .from('bibliotheque_exercices')
-      .select('nom, groupe')
-      .then(({ data }) => setGroupes(Object.fromEntries((data ?? []).map(x => [x.nom.trim().toLowerCase(), x.groupe]))))
   }, [])
 
   async function charger() {
@@ -142,19 +134,6 @@ export default function Suivi() {
   const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
   const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
 
-  // Séries des 30 derniers jours par groupe musculaire (d'après la bibliothèque d'exercices)
-  const il30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
-  const parGroupe: Record<string, number> = {}
-  for (const s of seances) {
-    if (s.date_seance < il30) continue
-    for (const x of s.exercices) {
-      const g = groupes[x.nom.trim().toLowerCase()] ?? 'Non classé'
-      parGroupe[g] = (parGroupe[g] ?? 0) + (x.series ?? 1)
-    }
-  }
-  const volumes = Object.entries(parGroupe).sort((a, b) => b[1] - a[1])
-  const maxVolume = Math.max(1, ...volumes.map(([, n]) => n))
-
   // 1RM estimée (formule d'Epley) pour une série donnée
   const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
     x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
@@ -193,21 +172,6 @@ export default function Suivi() {
         <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
         <div><strong>{seances.length ? courte(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière</span></div>
       </div>
-
-      <h3>Séries par groupe musculaire (30 jours)</h3>
-      {volumes.length ? (
-        <ul className="barres">
-          {volumes.map(([g, n]) => (
-            <li key={g}>
-              <span>{g}</span>
-              <div><i style={{ width: `${(n / maxVolume) * 100}%` }} /></div>
-              <b>{n}</b>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="meta">Aucune séance sur les 30 derniers jours.</p>
-      )}
 
       <h3>Charges</h3>
       {noms.length ? (
