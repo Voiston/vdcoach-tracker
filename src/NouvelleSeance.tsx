@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useNotifier } from './ui'
+import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
+import { Champ, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useNotifier } from './ui'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -63,6 +65,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [clientsPrets, setClientsPrets] = useState(false)
   const notifier = useNotifier()
   const aller = useAller()
+  const [feuilleModele, setFeuilleModele] = useState(false)
+  const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon()))
   const [clientId, setClientId] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [duree, setDuree] = useState('')
@@ -130,13 +134,11 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setErreur('')
   }
 
-  async function enregistrerModele() {
+  async function enregistrerModele(nom: string): Promise<string | undefined> {
     const exos = lignes.filter(l => l.nom.trim())
-    if (!exos.length) return setErreur('Ajoute au moins un exercice pour créer un modèle.')
-    const nom = window.prompt('Nom du modèle (ex. Full body A) :')?.trim()
-    if (!nom) return
+    if (!exos.length) return 'Ajoute au moins un exercice pour créer un modèle.'
     const { data, error } = await supabase.from('modeles').insert({ nom, duree_min: num(duree) }).select('id, nom').single()
-    if (error) return setErreur(messageErreur(error))
+    if (error) return messageErreur(error)
     const { error: erreurExos } = await supabase.from('modele_exercices').insert(
       exos.map((l, i) => ({
         modele_id: data.id,
@@ -149,10 +151,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     )
     if (erreurExos) {
       await supabase.from('modeles').delete().eq('id', data.id)
-      return setErreur(messageErreur(erreurExos))
+      return messageErreur(erreurExos)
     }
     setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
-    setErreur('')
     notifier(`Modèle « ${nom} » enregistré`)
   }
 
@@ -208,6 +209,31 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       if (precedent != null && charge > Number(precedent)) records.push(`${l.nom.trim()} ${charge} kg (avant : ${precedent} kg)`)
     }
     return records
+  }
+
+  // Sauvegarde automatique de la séance en cours (création uniquement), quelques instants après chaque modification
+  useEffect(() => {
+    if (seanceId || brouillon || !clientId) return
+    const contenu = duree.trim() || ressenti.trim() || notes.trim() || lignes.some(l => l.nom.trim())
+    if (!contenu) return
+    const minuteur = setTimeout(() => ecrireBrouillon({ clientId, date, duree, ressenti, notes, lignes }), 600)
+    return () => clearTimeout(minuteur)
+  }, [seanceId, brouillon, clientId, date, duree, ressenti, notes, lignes])
+
+  function reprendreBrouillon() {
+    if (!brouillon) return
+    if (clients.some(c => c.id === brouillon.clientId)) setClientId(brouillon.clientId)
+    setDate(brouillon.date)
+    setDuree(brouillon.duree)
+    setRessenti(brouillon.ressenti)
+    setNotes(brouillon.notes)
+    setLignes(brouillon.lignes.length ? brouillon.lignes : [vide()])
+    setBrouillon(null)
+  }
+
+  function abandonnerBrouillon() {
+    effacerBrouillon()
+    setBrouillon(null)
   }
 
   function maj(i: number, champ: keyof Ligne, valeur: string) {
@@ -274,6 +300,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       if (error) return echec(messageErreur(error))
     }
     setEnvoi(false)
+    if (!seanceId) effacerBrouillon()
     notifier(seanceId ? 'Séance modifiée' : 'Séance enregistrée')
     onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
@@ -281,21 +308,37 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   // Suggestions : exercices déjà saisis + bibliothèque (l'orthographe de la bibliothèque prime)
   const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
   const pointsAttention = clients.find(c => c.id === clientId)?.points_attention
+  const invalide = verifier(duree, REGLES.duree) || verifier(ressenti, REGLES.ressenti)
+    || lignes.some(l => verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
 
   if (!seanceId && !clientsPrets) return erreur ? <ErreurChargement message={erreur} /> : <Squelette lignes={4} />
   if (!seanceId && !clients.length) return <EtatVide titre="Aucun client pour l'instant" texte="Crée une fiche client pour commencer à suivre ses séances." action={{ libelle: 'Ajouter un client', onClick: () => aller('clients') }} />
 
   return (
+    <>
     <form onSubmit={enregistrer}>
       <h2>{seanceId ? 'Modifier la séance' : 'Nouvelle séance'}</h2>
-      <select value={clientId} onChange={e => setClientId(e.target.value)}>
+      {brouillon && (
+        <div className="brouillon" role="status">
+          <p>
+            <strong>Séance en cours retrouvée</strong>
+            {clients.find(c => c.id === brouillon.clientId) ? ` pour ${clients.find(c => c.id === brouillon.clientId)?.prenom}` : ''}
+            {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
+          </p>
+          <div className="ligne">
+            <button type="button" onClick={reprendreBrouillon}>Reprendre</button>
+            <button type="button" className="secondaire" onClick={abandonnerBrouillon}>Abandonner</button>
+          </div>
+        </div>
+      )}
+      <Champ libelle="Client"><select value={clientId} onChange={e => setClientId(e.target.value)}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
-      </select>
+      </select></Champ>
       {pointsAttention && <p className="attention">⚠ {pointsAttention}</p>}
-      <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+      <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
       <div className="ligne">
-        <input type="number" inputMode="numeric" placeholder="Durée (min)" value={duree} onChange={e => setDuree(e.target.value)} />
-        <input type="number" inputMode="numeric" min={1} max={10} placeholder="Ressenti /10" value={ressenti} onChange={e => setRessenti(e.target.value)} />
+        <Champ libelle="Durée (min)" erreur={verifier(duree, REGLES.duree)}><input inputMode="numeric" value={duree} onChange={e => setDuree(e.target.value)} /></Champ>
+        <Champ libelle="Ressenti (1 à 10)" erreur={verifier(ressenti, REGLES.ressenti)}><input inputMode="numeric" value={ressenti} onChange={e => setRessenti(e.target.value)} /></Champ>
       </div>
 
       <h3>Exercices</h3>
@@ -313,22 +356,37 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       <datalist id="noms-exercices">{suggestions.map(n => <option key={n} value={n} />)}</datalist>
       {lignes.map((l, i) => (
         <div className="exercice" key={i}>
-          <input list="noms-exercices" placeholder="Exercice" value={l.nom} onChange={e => maj(i, 'nom', e.target.value)} />
+          <Champ libelle="Exercice"><input list="noms-exercices" value={l.nom} onChange={e => maj(i, 'nom', e.target.value)} /></Champ>
           {derniers[cle(l.nom)] && <DerniereFois d={derniers[cle(l.nom)]} />}
           {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
           <div className="ligne">
-            <input inputMode="numeric" placeholder="Séries" value={l.series} onChange={e => maj(i, 'series', e.target.value)} />
-            <input inputMode="numeric" placeholder="Reps" value={l.repetitions} onChange={e => maj(i, 'repetitions', e.target.value)} />
-            <input inputMode="decimal" placeholder="Charge kg" value={l.charge_kg} onChange={e => maj(i, 'charge_kg', e.target.value)} />
+            <Champ libelle="Séries" erreur={verifier(l.series, REGLES.series)}><input inputMode="numeric" value={l.series} onChange={e => maj(i, 'series', e.target.value)} /></Champ>
+            <Champ libelle="Répétitions" erreur={verifier(l.repetitions, REGLES.repetitions)}><input inputMode="numeric" value={l.repetitions} onChange={e => maj(i, 'repetitions', e.target.value)} /></Champ>
+            <Champ libelle="Charge (kg)" erreur={verifier(l.charge_kg, REGLES.charge)}><input inputMode="decimal" value={l.charge_kg} onChange={e => maj(i, 'charge_kg', e.target.value)} /></Champ>
           </div>
         </div>
       ))}
       <button type="button" className="secondaire" onClick={() => setLignes(l => [...l, vide()])}>+ Ajouter un exercice</button>
-      <button type="button" className="secondaire" onClick={enregistrerModele}>Enregistrer comme modèle</button>
+      <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)}>Enregistrer comme modèle</button>
 
-      <textarea placeholder="Notes de séance" value={notes} onChange={e => setNotes(e.target.value)} />
+      <Champ libelle="Notes"><textarea value={notes} onChange={e => setNotes(e.target.value)} /></Champ>
       <MessageErreur message={erreur} />
-      <button type="submit" disabled={envoi}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
+      <button type="submit" disabled={envoi || Boolean(invalide)}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
     </form>
+    {feuilleModele && (
+      <FeuilleSaisie
+        titre="Nouveau modèle"
+        libelle="Nom du modèle (ex. Full body A)"
+        valeur=""
+        obligatoire
+        onFermer={() => setFeuilleModele(false)}
+        onValider={async nom => {
+          const e = await enregistrerModele(nom)
+          if (!e) setFeuilleModele(false)
+          return e
+        }}
+      />
+    )}
+    </>
   )
 }

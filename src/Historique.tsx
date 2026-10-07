@@ -85,7 +85,7 @@ export default function Historique({ onEdit }: { onEdit: (id: string) => void })
   return (
     <section>
       <h2>Historique</h2>
-      <select value={filtre} onChange={e => changerFiltre(e.target.value)}>
+      <select aria-label="Filtrer par client" value={filtre} onChange={e => changerFiltre(e.target.value)}>
         <option value="">Tous les clients</option>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>

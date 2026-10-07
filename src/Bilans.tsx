@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
@@ -97,7 +98,7 @@ export default function Bilans() {
   return (
     <section>
       <h2>Bilans</h2>
-      <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
+      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       <MessageErreur message={erreur} reessayer={charger} />
@@ -141,11 +142,12 @@ export default function Bilans() {
         {CLES.map(cle => (
           <label key={cle} className="champ-test">
             <span>{TESTS[cle].label}</span>
-            <input inputMode="decimal" placeholder={TESTS[cle].unite} value={saisies[cle] ?? ''} onChange={e => setSaisies({ ...saisies, [cle]: e.target.value })} />
+            <input inputMode="decimal" placeholder={TESTS[cle].unite} aria-invalid={Boolean(verifier(saisies[cle] ?? ''))} value={saisies[cle] ?? ''} onChange={e => setSaisies({ ...saisies, [cle]: e.target.value })} />
           </label>
         ))}
+        {CLES.some(c => verifier(saisies[c] ?? '')) && <p className="champ-erreur" role="alert">Une des valeurs saisies n'est pas un nombre.</p>}
         <p className="meta">Remplis seulement les tests réalisés.</p>
-        <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer le bilan'}</button>
+        <button type="submit" disabled={occupe || CLES.some(c => Boolean(verifier(saisies[c] ?? '')))}>{occupe ? 'Enregistrement…' : 'Enregistrer le bilan'}</button>
       </form>
 
       {dates.length > 0 && (

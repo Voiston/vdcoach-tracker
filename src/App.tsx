@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { seDeconnecter, deconnexionVolontaire } from './deconnexion'
@@ -8,7 +8,7 @@ import NouvelleSeance from './NouvelleSeance'
 import Historique from './Historique'
 import SuiviHub from './SuiviHub'
 import Icone from './icones'
-import { BandeauReseau, EcranChargement, NavigationCtx } from './ui'
+import { BandeauReseau, Champ, EcranChargement, NavigationCtx } from './ui'
 import Bibliotheque from './Bibliotheque'
 import Sauvegarde from './Sauvegarde'
 import Modeles from './Modeles'
@@ -47,10 +47,40 @@ export default function App() {
     else verifierNiveau()
   }, [session])
 
-  function aller(o: Onglet) {
-    setEdition(null)
+  // Chaque changement d'écran est inscrit dans l'historique : le bouton « retour » du téléphone remonte d'un écran
+  useEffect(() => {
+    history.replaceState({ onglet: 'seance', edition: null }, '')
+    const retour = (e: PopStateEvent) => {
+      setOnglet((e.state?.onglet as Onglet) ?? 'seance')
+      setEdition(e.state?.edition ?? null)
+      setBandeau('')
+      window.scrollTo({ top: 0 })
+    }
+    window.addEventListener('popstate', retour)
+    return () => window.removeEventListener('popstate', retour)
+  }, [])
+
+  // Après un changement d'écran, le focus passe au contenu (utile aux lecteurs d'écran et au clavier)
+  const premierAffichage = useRef(true)
+  useEffect(() => {
+    if (premierAffichage.current) {
+      premierAffichage.current = false
+      return
+    }
+    document.querySelector('main')?.focus({ preventScroll: true })
+  }, [onglet, edition])
+
+  function afficher(o: Onglet, id: string | null = null) {
+    setEdition(id)
     setBandeau('')
     setOnglet(o)
+    window.scrollTo({ top: 0 })
+    history.pushState({ onglet: o, edition: id }, '')
+  }
+
+  function aller(o: Onglet) {
+    if (o === onglet && !edition) return window.scrollTo({ top: 0, behavior: 'smooth' })
+    afficher(o)
   }
 
   if (session === undefined) return <EcranChargement />
@@ -66,13 +96,13 @@ export default function App() {
         <button className="lien" onClick={() => seDeconnecter()}>Déconnexion</button>
       </header>
       <BandeauReseau />
-      <main>
+      <main tabIndex={-1}>
         {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
         {onglet === 'seance' && (
           <NouvelleSeance key={edition ?? 'nouvelle'} seanceId={edition} onSaved={m => { aller('historique'); setBandeau(m ?? '') }} />
         )}
         {onglet === 'historique' && (
-          <Historique onEdit={id => { setEdition(id); setOnglet('seance') }} />
+          <Historique onEdit={id => afficher('seance', id)} />
         )}
         {onglet === 'suivi' && <SuiviHub />}
         {onglet === 'exercices' && <Bibliotheque />}
@@ -113,8 +143,8 @@ function Connexion({ message }: { message?: string }) {
     <form className="connexion" onSubmit={connecter}>
       <h1>VDCoach Tracker</h1>
       {message && <p className="erreur">{message}</p>}
-      <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-      <input type="password" placeholder="Mot de passe" value={mdp} onChange={e => setMdp(e.target.value)} required />
+      <Champ libelle="Email"><input autoComplete="username" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></Champ>
+      <Champ libelle="Mot de passe"><input autoComplete="current-password" type="password" value={mdp} onChange={e => setMdp(e.target.value)} required /></Champ>
       {erreur && <p className="erreur">{erreur}</p>}
       <button type="submit">Se connecter</button>
     </form>

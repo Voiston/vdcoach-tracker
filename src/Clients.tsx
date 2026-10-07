@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useNotifier, useOccupe } from './ui'
 
 export type Client = {
   id: string
@@ -21,6 +21,7 @@ export default function Clients() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
+  const [edition, setEdition] = useState<Client | null>(null)
   const [charge, setCharge] = useState(false)
 
   async function charger() {
@@ -52,15 +53,11 @@ export default function Clients() {
     notifier('Client ajouté')
   }
 
-  async function modifierAttention(c: Client) {
-    const texte = window.prompt("Points d'attention (blessures, contre-indications). Laisse vide pour effacer :", c.points_attention ?? '')
-    if (texte === null) return
-    const { error } = await supabase.from('clients').update({ points_attention: texte.trim() || null }).eq('id', c.id)
-    if (error) setErreur(messageErreur(error))
-    else {
-      charger()
-      notifier("Points d'attention enregistrés")
-    }
+  async function enregistrerAttention(c: Client, texte: string): Promise<string | undefined> {
+    const { error } = await supabase.from('clients').update({ points_attention: texte || null }).eq('id', c.id)
+    if (error) return messageErreur(error)
+    charger()
+    notifier("Points d'attention enregistrés")
   }
 
   async function basculerActif(c: Client) {
@@ -73,10 +70,10 @@ export default function Clients() {
     <section>
       <h2>Clients</h2>
       <form onSubmit={e => lancer(() => ajouter(e))}>
-        <input placeholder="Prénom" value={prenom} onChange={e => setPrenom(e.target.value)} required />
-        <input placeholder="Nom (facultatif)" value={nom} onChange={e => setNom(e.target.value)} />
-        <textarea placeholder="Objectifs (facultatif)" value={objectifs} onChange={e => setObjectifs(e.target.value)} />
-        <textarea placeholder="Points d'attention : blessures, contre-indications (facultatif)" value={attention} onChange={e => setAttention(e.target.value)} />
+        <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required /></Champ>
+        <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
+        <Champ libelle="Objectifs (facultatif)"><textarea value={objectifs} onChange={e => setObjectifs(e.target.value)} /></Champ>
+        <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : un bandeau s'affiche à l'ouverture d'une séance."><textarea value={attention} onChange={e => setAttention(e.target.value)} /></Champ>
         <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
       </form>
       <MessageErreur message={erreur} reessayer={charger} />
@@ -91,12 +88,26 @@ export default function Clients() {
               {c.points_attention && <p className="attention">⚠ {c.points_attention}</p>}
             </div>
             <div className="ligne">
-              <button className="lien" onClick={() => modifierAttention(c)}>Attention</button>
+              <button className="lien" onClick={() => setEdition(c)}>Attention</button>
               <button className="lien" onClick={() => basculerActif(c)}>{c.actif ? 'Archiver' : 'Réactiver'}</button>
             </div>
           </li>
         ))}
       </ul>
+      {edition && (
+        <FeuilleSaisie
+          titre={`Points d'attention : ${edition.prenom}`}
+          libelle="Blessures, douleurs, contre-indications"
+          valeur={edition.points_attention ?? ''}
+          multiligne
+          onFermer={() => setEdition(null)}
+          onValider={async texte => {
+            const e = await enregistrerAttention(edition, texte)
+            if (!e) setEdition(null)
+            return e
+          }}
+        />
+      )}
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
+import { EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
 
 type Modele = { id: string; nom: string; modele_exercices: { nom: string }[] }
 
@@ -11,6 +11,7 @@ export default function Modeles() {
   const [erreur, setErreur] = useState('')
   const [charge, setCharge] = useState(false)
   const notifier = useNotifier()
+  const [enRenommage, setEnRenommage] = useState<Modele | null>(null)
   const [masques, setMasques] = useState<string[]>([])
 
   async function charger() {
@@ -24,15 +25,11 @@ export default function Modeles() {
     charger()
   }, [])
 
-  async function renommer(m: Modele) {
-    const nom = window.prompt('Nouveau nom du modèle :', m.nom)?.trim()
-    if (!nom || nom === m.nom) return
+  async function enregistrerNom(m: Modele, nom: string): Promise<string | undefined> {
     const { error } = await supabase.from('modeles').update({ nom }).eq('id', m.id)
-    if (error) setErreur(messageErreur(error))
-    else {
-      charger()
-      notifier('Modèle renommé')
-    }
+    if (error) return messageErreur(error)
+    charger()
+    notifier('Modèle renommé')
   }
 
   function supprimer(m: Modele) {
@@ -61,12 +58,26 @@ export default function Modeles() {
               <p className="meta">{m.modele_exercices.length} exercice(s)</p>
             </div>
             <div className="ligne">
-              <button className="lien" onClick={() => renommer(m)}>Renommer</button>
+              <button className="lien" onClick={() => setEnRenommage(m)}>Renommer</button>
               <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
             </div>
           </li>
         ))}
       </ul>
+      {enRenommage && (
+        <FeuilleSaisie
+          titre="Renommer le modèle"
+          libelle="Nom du modèle"
+          valeur={enRenommage.nom}
+          obligatoire
+          onFermer={() => setEnRenommage(null)}
+          onValider={async nom => {
+            const e = await enregistrerNom(enRenommage, nom)
+            if (!e) setEnRenommage(null)
+            return e
+          }}
+        />
+      )}
     </section>
   )
 }

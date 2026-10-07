@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import { TYPES, TESTS } from './definitions'
 import { lireClient, memoriserClient } from './client-courant'
@@ -132,7 +133,7 @@ export default function Objectifs() {
   return (
     <section>
       <h2>Objectifs</h2>
-      <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
+      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       <MessageErreur message={erreur} reessayer={charger} />
@@ -168,26 +169,26 @@ export default function Objectifs() {
 
       <h3>Nouvel objectif</h3>
       <form onSubmit={e => lancer(() => ajouter(e))}>
-        <select value={source} onChange={e => changerSource(e.target.value as Source)}>
+        <Champ libelle="Type d'objectif"><select value={source} onChange={e => changerSource(e.target.value as Source)}>
           {(Object.keys(SOURCES) as Source[]).map(s => <option key={s} value={s}>{SOURCES[s]}</option>)}
-        </select>
+        </select></Champ>
         {source === 'charge' ? (
           <>
-            <input list="noms-objectifs" placeholder="Exercice (ex. Squat goblet)" value={ref} onChange={e => viser('charge', e.target.value)} />
+            <Champ libelle="Exercice"><input list="noms-objectifs" value={ref} onChange={e => viser('charge', e.target.value)} /></Champ>
             <datalist id="noms-objectifs">{noms.map(n => <option key={n} value={n} />)}</datalist>
           </>
         ) : (
-          <select value={ref} onChange={e => viser(source, e.target.value)}>
+          <Champ libelle="Suivi concerné"><select value={ref} onChange={e => viser(source, e.target.value)}>
             {Object.entries(source === 'mesure' ? TYPES : TESTS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-          </select>
+          </select></Champ>
         )}
         <div className="ligne">
-          <input inputMode="decimal" placeholder={`Départ (${unite(source, ref)})`} value={depart} onChange={e => setDepart(e.target.value)} />
-          <input inputMode="decimal" placeholder={`Cible (${unite(source, ref)})`} value={cible} onChange={e => setCible(e.target.value)} />
+          <Champ libelle={`Départ (${unite(source, ref)})`} erreur={verifier(depart)}><input inputMode="decimal" value={depart} onChange={e => setDepart(e.target.value)} /></Champ>
+          <Champ libelle={`Cible (${unite(source, ref)})`} erreur={verifier(cible)}><input inputMode="decimal" value={cible} onChange={e => setCible(e.target.value)} /></Champ>
         </div>
-        <input type="date" value={echeance} onChange={e => setEcheance(e.target.value)} />
+        <Champ libelle="Échéance (facultatif)"><input type="date" value={echeance} onChange={e => setEcheance(e.target.value)} /></Champ>
         <p className="meta">Le départ est proposé d'après les données du client ; l'échéance est facultative.</p>
-        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}</button>
+        <button type="submit" disabled={occupe || Boolean(verifier(depart) || verifier(cible))}>{occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}</button>
       </form>
     </section>
   )

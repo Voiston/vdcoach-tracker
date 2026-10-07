@@ -1,5 +1,5 @@
 :root {
-  --fond: #f2f5f3; --surface: #ffffff; --encre: #17231f; --discret: #66756f;
+  --fond: #f2f5f3; --surface: #ffffff; --encre: #17231f; --discret: #5a6963;
   --trait: #e3e9e6; --bord: #d3ddd8;
   --accent: #2f7d6b; --accent-fonce: #25665a; --accent-doux: #dcefe8; --sur-accent: #ffffff;
   --danger: #b3392f; --succes: #2e7d4f;
@@ -110,3 +110,20 @@ header button.lien { color: var(--discret); font-weight: 600; }
 /* Erreurs et réseau */
 .erreur-bloc { display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; margin: .5rem 0; }
 .hors-ligne { position: sticky; top: calc(3.1rem + env(safe-area-inset-top)); z-index: 4; margin: .25rem 1.25rem 0; padding: .6rem .9rem; font-size: .9rem; background: var(--alerte-fond); color: var(--alerte-texte); border-radius: 14px; }
+
+/* Formulaires : libellés, validation, feuille de saisie */
+.champ { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-width: 0; }
+.champ-libelle { font-size: .875rem; font-weight: 600; color: var(--discret); }
+.champ-aide { font-size: .8125rem; color: var(--discret); }
+.champ-erreur { font-size: .8125rem; font-weight: 600; color: var(--danger); }
+.champ.invalide input, .champ.invalide select, .champ.invalide textarea, input[aria-invalid="true"] { border-color: var(--danger); }
+.voile { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: rgba(15, 22, 20, .45); }
+.feuille { width: min(100%, 40rem); padding: 1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom)); background: var(--surface); border-radius: 24px 24px 0 0; animation: monter-feuille .25s ease-out; }
+.feuille h3 { margin: 0; }
+@keyframes monter-feuille { from { transform: translateY(100%); } }
+
+/* Brouillon, mise à jour, focus */
+main:focus { outline: none; }
+.brouillon { display: flex; flex-direction: column; gap: .6rem; padding: .85rem 1rem; background: var(--accent-doux); color: var(--accent-fonce); border-radius: 16px; }
+.mise-a-jour { position: fixed; top: calc(3.4rem + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 25; width: min(calc(100% - 1.5rem), 36rem); display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .6rem .55rem 1rem; background: var(--encre); color: var(--fond); border-radius: 14px; box-shadow: var(--ombre); }
+.mise-a-jour button { min-height: 2.5rem; padding: .3rem .9rem; }

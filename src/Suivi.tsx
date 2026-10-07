@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 import type { Client } from './Clients'
 import './suivi.css'
 import { TYPES } from './definitions'
@@ -180,7 +181,7 @@ export default function Suivi() {
   return (
     <section>
       <h2>Suivi</h2>
-      <select value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
+      <select aria-label="Client" value={clientId} onChange={e => { setClientId(e.target.value); memoriserClient(e.target.value) }}>
         {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}{c.actif ? '' : ' (archivé)'}</option>)}
       </select>
       <MessageErreur message={erreur} reessayer={charger} />
@@ -211,7 +212,7 @@ export default function Suivi() {
       <h3>Charges</h3>
       {noms.length ? (
         <>
-          <select value={exoChoisi} onChange={e => setExo(e.target.value)}>
+          <select aria-label="Exercice" value={exoChoisi} onChange={e => setExo(e.target.value)}>
             {noms.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
           <Courbe points={pointsCharge} unite="kg" />
@@ -240,16 +241,16 @@ export default function Suivi() {
       )}
 
       <h3>Mesures</h3>
-      <select value={type} onChange={e => setType(e.target.value)}>
+      <select aria-label="Type de mesure" value={type} onChange={e => setType(e.target.value)}>
         {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
       </select>
       <Courbe points={pointsMesure} unite={TYPES[type].unite} />
       <form onSubmit={e => lancer(() => ajouter(e))}>
         <div className="ligne">
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
-          <input inputMode="decimal" placeholder={`Valeur (${TYPES[type].unite})`} value={valeur} onChange={e => setValeur(e.target.value)} />
+          <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
+          <Champ libelle={`Valeur (${TYPES[type].unite})`} erreur={verifier(valeur, REGLES.mesure)}><input inputMode="decimal" value={valeur} onChange={e => setValeur(e.target.value)} /></Champ>
         </div>
-        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
+        <button type="submit" disabled={occupe || Boolean(verifier(valeur, REGLES.mesure))}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
       </form>
       <ul className="liste">
         {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (

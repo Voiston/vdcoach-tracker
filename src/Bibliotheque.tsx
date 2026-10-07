@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -73,17 +73,17 @@ export default function Bibliotheque() {
 
       {form ? (
         <form onSubmit={e => lancer(() => enregistrer(e))}>
-          <input placeholder="Nom de l'exercice" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required />
+          <Champ libelle="Nom"><input autoComplete="off" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required /></Champ>
           <div className="ligne">
-            <select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
+            <Champ libelle="Groupe musculaire"><select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
               {GROUPES.map(g => <option key={g}>{g}</option>)}
-            </select>
-            <select value={form.materiel} onChange={e => setForm({ ...form, materiel: e.target.value })}>
+            </select></Champ>
+            <Champ libelle="Matériel"><select value={form.materiel} onChange={e => setForm({ ...form, materiel: e.target.value })}>
               {MATERIELS.map(m => <option key={m}>{m}</option>)}
-            </select>
+            </select></Champ>
           </div>
-          <textarea placeholder="Consignes de technique (facultatif)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-          <input type="url" placeholder="Lien vidéo (facultatif)" value={form.video_url} onChange={e => setForm({ ...form, video_url: e.target.value })} />
+          <Champ libelle="Consignes de technique (facultatif)"><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Champ>
+          <Champ libelle="Lien vidéo (facultatif)"><input inputMode="url" type="url" value={form.video_url} onChange={e => setForm({ ...form, video_url: e.target.value })} /></Champ>
           <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : form.id ? 'Enregistrer' : "Ajouter l'exercice"}</button>
           <button type="button" className="secondaire" onClick={() => { setForm(null); setErreur('') }}>Annuler</button>
         </form>
@@ -92,11 +92,11 @@ export default function Bibliotheque() {
       )}
 
       <div className="ligne">
-        <select value={groupe} onChange={e => setGroupe(e.target.value)}>
+        <select aria-label="Filtrer par groupe" value={groupe} onChange={e => setGroupe(e.target.value)}>
           <option value="">Tous les groupes</option>
           {GROUPES.map(g => <option key={g}>{g}</option>)}
         </select>
-        <input placeholder="Rechercher…" value={recherche} onChange={e => setRecherche(e.target.value)} />
+        <input aria-label="Rechercher un exercice" placeholder="Rechercher…" value={recherche} onChange={e => setRecherche(e.target.value)} />
       </div>
 
       {!charge && !erreur && <Squelette lignes={5} />}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { Champ } from './ui'
 import { seDeconnecter } from './deconnexion'
 import { messageErreur } from './erreurs'
 
@@ -22,7 +23,7 @@ export function Verification2FA({ onOk }: { onOk: () => void }) {
     <form className="connexion" onSubmit={valider}>
       <h1>Vérification en deux étapes</h1>
       <p className="meta">Saisis le code à 6 chiffres de ton application d'authentification.</p>
-      <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000" value={code} onChange={e => setCode(e.target.value)} required />
+      <Champ libelle="Code à 6 chiffres"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e => setCode(e.target.value)} required /></Champ>
       {erreur && <p className="erreur">{erreur}</p>}
       <button type="submit">Valider</button>
       <button type="button" className="lien" onClick={() => seDeconnecter()}>Annuler</button>
@@ -91,7 +92,7 @@ export function Securite() {
             Scanne ce QR code avec une application d'authentification (Google Authenticator, Aegis, 2FAS…).
             Note aussi cette clé dans un endroit sûr, elle te permettra de retrouver l'accès si tu perds ton téléphone : <code>{enrol.secret}</code>
           </p>
-          <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Code à 6 chiffres" value={code} onChange={e => setCode(e.target.value)} required />
+          <Champ libelle="Code de vérification"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e => setCode(e.target.value)} required /></Champ>
           <button type="submit">Confirmer et activer</button>
         </form>
       )}

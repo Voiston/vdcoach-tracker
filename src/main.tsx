@@ -4,12 +4,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { NotificationsProvider } from './ui'
+import MiseAJour from './MiseAJour'
 import './styles.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NotificationsProvider>
       <App />
+      <MiseAJour />
     </NotificationsProvider>
   </StrictMode>,
 )

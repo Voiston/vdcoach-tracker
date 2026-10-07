@@ -168,3 +168,65 @@ export function BandeauReseau() {
   if (enLigne) return null
   return <p className="hors-ligne" role="status">Tu es hors connexion : rien ne sera enregistré tant que le réseau n'est pas revenu.</p>
 }
+
+/* ---------- Champ de formulaire avec libellé visible ---------- */
+export function Champ({ libelle, aide, erreur, children }: { libelle: string; aide?: string; erreur?: string; children: ReactNode }) {
+  return (
+    <label className={`champ${erreur ? ' invalide' : ''}`}>
+      <span className="champ-libelle">{libelle}</span>
+      {children}
+      {erreur ? <span className="champ-erreur" role="alert">{erreur}</span> : aide ? <span className="champ-aide">{aide}</span> : null}
+    </label>
+  )
+}
+
+/**
+ * Petite feuille de saisie (remplace les fenêtres natives « prompt »).
+ * « onValider » renvoie un message d'erreur à afficher, ou rien si tout s'est bien passé.
+ */
+export function FeuilleSaisie(props: {
+  titre: string
+  libelle: string
+  valeur: string
+  multiligne?: boolean
+  obligatoire?: boolean
+  validerLibelle?: string
+  onValider: (texte: string) => Promise<string | void>
+  onFermer: () => void
+}) {
+  const { titre, libelle, valeur, multiligne, obligatoire, validerLibelle = 'Enregistrer', onValider, onFermer } = props
+  const [texte, setTexte] = useState(valeur)
+  const [erreur, setErreur] = useState('')
+  const [occupe, lancer] = useOccupe()
+  const vide = Boolean(obligatoire) && !texte.trim()
+
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer() }
+    window.addEventListener('keydown', touche)
+    return () => window.removeEventListener('keydown', touche)
+  }, [onFermer])
+
+  function envoyer(e: React.FormEvent) {
+    e.preventDefault()
+    if (vide) return
+    lancer(async () => setErreur((await onValider(texte.trim())) ?? ''))
+  }
+
+  return (
+    <div className="voile" onClick={onFermer}>
+      <form className="feuille" role="dialog" aria-modal="true" aria-labelledby="feuille-titre" onClick={e => e.stopPropagation()} onSubmit={envoyer}>
+        <h3 id="feuille-titre">{titre}</h3>
+        <Champ libelle={libelle}>
+          {multiligne
+            ? <textarea autoFocus value={texte} onChange={e => setTexte(e.target.value)} />
+            : <input autoFocus value={texte} onChange={e => setTexte(e.target.value)} />}
+        </Champ>
+        {erreur && <p className="erreur" role="alert">{erreur}</p>}
+        <div className="ligne">
+          <button type="button" className="secondaire" onClick={onFermer}>Annuler</button>
+          <button type="submit" disabled={occupe || vide}>{occupe ? 'Enregistrement…' : validerLibelle}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
