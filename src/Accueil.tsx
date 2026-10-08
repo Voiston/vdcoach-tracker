@@ -85,7 +85,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
           <ul className="liste">{actifs.map(ligne)}</ul>
           {!actifs.length && <p className="meta">Aucun client ne correspond.</p>}
 
-          {seances.length > 0 && !filtre && (
+          {seances.length > 0 && !filtre && !actifId && (
             <>
               <h3>Activité récente</h3>
               <ul className="liste">
