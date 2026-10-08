@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-
-type Reference = { nom: string; groupe: string; exercice_muscles: { muscle: string; coefficient: number }[] }
-type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null }[] }
-type Apport = { exercice: string; series: number; coefficient: number }
+import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, type Reference, type SeanceExo } from './muscles-lib'
 
 const PERIODES = [7, 30, 90]
-const cle = (n: string) => n.trim().toLowerCase()
 const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${fr(c)}`
 
@@ -23,24 +18,18 @@ export default function Muscles() {
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
-    supabase.from('bibliotheque_exercices').select('nom, groupe, exercice_muscles(muscle, coefficient)').then(({ data, error }) => {
-      if (error) return setErreur(messageErreur(error))
-      setBiblio(Object.fromEntries((data as Reference[]).map(x => [cle(x.nom), x])))
+    chargerBibliothequeMuscles().then(({ biblio, erreur: err }) => {
+      if (err) return setErreur(messageErreur(err))
+      setBiblio(biblio ?? {})
     })
   }, [])
 
   async function charger() {
-    if (!clientId) return
-    const debut = new Date(Date.now() - jours * 86_400_000).toLocaleDateString('sv-SE')
-    const { data, error } = await supabase
-      .from('seances')
-      .select('date_seance, exercices(nom, series)')
-      .eq('client_id', clientId)
-      .gte('date_seance', debut)
+    const { seances: lues, erreur: err } = await chargerSeancesMuscles(clientId, jours)
     setPret(true)
-    if (error) return setErreur(messageErreur(error))
+    if (err || !lues) return setErreur(messageErreur(err))
     setErreur('')
-    setSeances(data as unknown as SeanceExo[])
+    setSeances(lues)
   }
 
   useEffect(() => {
@@ -48,30 +37,7 @@ export default function Muscles() {
     charger()
   }, [clientId, jours])
 
-  // Séries pondérées par muscle : une série d'un exercice compte pour chaque muscle sollicité, selon son niveau.
-  const parMuscle: Record<string, { total: number; principal: number; apports: Apport[] }> = {}
-  const nonClasses: Record<string, number> = {}
-  let seriesTotal = 0
-  for (const s of seances)
-    for (const x of s.exercices) {
-      const series = x.series ?? 1
-      const ref = biblio?.[cle(x.nom)]
-      if (ref?.groupe === 'Mobilité') continue
-      seriesTotal += series
-      if (!ref || !ref.exercice_muscles.length) {
-        nonClasses[x.nom.trim()] = (nonClasses[x.nom.trim()] ?? 0) + series
-        continue
-      }
-      for (const m of ref.exercice_muscles) {
-        const coef = Number(m.coefficient)
-        const e = (parMuscle[m.muscle] ??= { total: 0, principal: 0, apports: [] })
-        e.total += series * coef
-        if (coef >= 1) e.principal += series
-        const existant = e.apports.find(a => a.exercice === ref.nom)
-        if (existant) existant.series += series
-        else e.apports.push({ exercice: ref.nom, series, coefficient: coef })
-      }
-    }
+  const { parMuscle, nonClasses, seriesTotal } = calculerMuscles(seances, biblio)
 
   const classement = Object.entries(parMuscle).sort((a, b) => b[1].total - a[1].total)
   const maximum = classement[0]?.[1].total ?? 1

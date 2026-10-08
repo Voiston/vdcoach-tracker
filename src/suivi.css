@@ -14,7 +14,7 @@
 .segments button.actif { background: var(--surface); color: var(--encre); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 
 .barres { list-style: none; margin: 0; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .7rem; background: var(--surface); border-radius: 20px; }
-.barres li { display: grid; grid-template-columns: 7rem 1fr 2rem; gap: .6rem; align-items: center; font-size: .9375rem; }
+.barres li { display: grid; grid-template-columns: 8.5rem 1fr 2.5rem; gap: .6rem; align-items: center; font-size: .9375rem; }
 .barres div { height: .55rem; background: var(--trait); border-radius: 999px; overflow: hidden; }
 .barres i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 .barres b { text-align: right; }

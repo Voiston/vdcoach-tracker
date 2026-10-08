@@ -4,13 +4,10 @@ import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
 import { TYPES, TESTS } from './definitions'
-
-type Source = 'mesure' | 'charge' | 'test'
-type Objectif = { id: string; source: Source; reference: string; valeur_depart: number; valeur_cible: number; echeance: string | null }
+import JaugeObjectif from './JaugeObjectif'
+import { chargerObjectifs, libelle, unite, valeurActuelle, type Objectif, type Source } from './objectifs-lib'
 
 const SOURCES: Record<Source, string> = { mesure: 'Mesure corporelle', charge: 'Charge sur un exercice', test: 'Test physique' }
-const unite = (s: Source, ref: string) => (s === 'mesure' ? TYPES[ref]?.unite : s === 'test' ? TESTS[ref]?.unite : 'kg') ?? ''
-const libelle = (s: Source, ref: string) => (s === 'mesure' ? TYPES[ref]?.label : s === 'test' ? TESTS[ref]?.label : ref) ?? ref
 const nombre = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')))
 
 export default function Objectifs() {
@@ -37,31 +34,14 @@ export default function Objectifs() {
   }, [])
 
   async function charger() {
-    if (!clientId) return
-    const [o, m, s] = await Promise.all([
-      supabase.from('objectifs').select('*').eq('client_id', clientId).order('created_at'),
-      supabase.from('mesures').select('type, valeur').eq('client_id', clientId).order('date_mesure'),
-      supabase.from('seances').select('exercices(nom, charge_kg)').eq('client_id', clientId),
-    ])
+    const { donnees, erreur: err } = await chargerObjectifs(clientId)
     setPret(true)
-    const err = o.error ?? m.error ?? s.error
-    if (err) return setErreur(messageErreur(err))
+    if (err || !donnees) return setErreur(messageErreur(err))
     setErreur('')
-    setObjectifs(o.data as Objectif[])
-    const dernieres: Record<string, number> = {}
-    for (const x of m.data ?? []) dernieres[x.type] = Number(x.valeur) // trié par date : la dernière écrase
-    setDerniereMesure(dernieres)
-    const charges: Record<string, number> = {}
-    const vus: string[] = []
-    for (const seance of (s.data ?? []) as any[])
-      for (const x of seance.exercices) {
-        if (x.charge_kg === null) continue
-        const k = String(x.nom).trim().toLowerCase()
-        charges[k] = Math.max(charges[k] ?? 0, Number(x.charge_kg))
-        vus.push(String(x.nom).trim())
-      }
-    setMeilleureCharge(charges)
-    setNoms(prec => [...new Set([...prec, ...vus])].sort())
+    setObjectifs(donnees.objectifs)
+    setDerniereMesure(donnees.derniereMesure)
+    setMeilleureCharge(donnees.meilleureCharge)
+    setNoms(prec => [...new Set([...prec, ...donnees.nomsExercices])].sort())
   }
 
   useEffect(() => {
@@ -69,8 +49,7 @@ export default function Objectifs() {
     charger()
   }, [clientId])
 
-  const actuelle = (s: Source, r: string): number | null =>
-    (s === 'charge' ? meilleureCharge[r.trim().toLowerCase()] : derniereMesure[r]) ?? null
+  const actuelle = (s: Source, r: string) => valeurActuelle({ derniereMesure, meilleureCharge }, s, r)
 
   // Propose la valeur actuelle comme point de départ (modifiable)
   function viser(s: Source, r: string) {
@@ -123,30 +102,12 @@ export default function Objectifs() {
 
       {!pret && <Squelette lignes={2} />}
       <ul className="liste" hidden={!pret}>
-        {visibles.map(o => {
-          const act = actuelle(o.source, o.reference)
-          const total = o.valeur_cible - o.valeur_depart
-          const pct = act === null ? 0 : Math.max(0, Math.min(100, ((act - o.valeur_depart) / total) * 100))
-          const atteint = act !== null && (total > 0 ? act >= o.valeur_cible : act <= o.valeur_cible)
-          const u = unite(o.source, o.reference)
-          const reste = o.echeance ? Math.ceil((Date.parse(o.echeance) - Date.now()) / 86_400_000) : null
-          return (
-            <li key={o.id}>
-              <div className="objectif">
-                <strong>{libelle(o.source, o.reference)}</strong>
-                <p className="meta">
-                  {Number(o.valeur_depart)} → <b>{act ?? '?'}</b> → {Number(o.valeur_cible)} {u}
-                </p>
-                <div className={`jauge ${atteint ? 'atteint' : ''}`}><i style={{ width: `${pct}%` }} /></div>
-                <p className="meta">
-                  {Math.round(pct)} %
-                  {atteint ? ' · 🎯 Atteint' : reste === null ? '' : reste >= 0 ? ` · ${reste} jour(s) restant(s)` : ` · échéance dépassée de ${-reste} j`}
-                </p>
-              </div>
-              <button className="lien danger" onClick={() => supprimer(o)}>Supprimer</button>
-            </li>
-          )
-        })}
+        {visibles.map(o => (
+          <li key={o.id}>
+            <JaugeObjectif objectif={o} actuelle={actuelle(o.source, o.reference)} />
+            <button className="lien danger" onClick={() => supprimer(o)}>Supprimer</button>
+          </li>
+        ))}
       </ul>
       {pret && !visibles.length && <EtatVide titre="Aucun objectif" texte="Fixe une cible chiffrée (poids, charge, test physique) et suis la progression ici." />}
 
