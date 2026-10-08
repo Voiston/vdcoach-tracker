@@ -79,7 +79,7 @@ export default function Muscles() {
                   <summary>
                     <span>{MUSCLES[muscle] ?? muscle}</span>
                     <div className="barre"><i style={{ width: `${(v.total / maximum) * 100}%` }} /></div>
-                    <b>{fr(v.total)}</b>
+                    <b>{fr(v.total)}<small> séries</small></b>
                   </summary>
                   <ul>
                     {[...v.apports].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient).map(a => (

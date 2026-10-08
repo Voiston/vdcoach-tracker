@@ -57,7 +57,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
         <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
         <span className="meta">{derniere[c.id] ? `Dernière séance ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
       </button>
-      {c.actif && <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>}
+      {c.actif && c.id !== actifId && <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>}
     </li>
   )
 

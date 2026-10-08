@@ -132,7 +132,7 @@ main:focus { outline: none; }
 .muscle-top { margin: .5rem 0 1rem; padding: .75rem 1rem; background: var(--accent-doux); color: var(--accent-fonce); border-radius: 16px; }
 .muscles { list-style: none; margin: .75rem 0; padding: 0; background: var(--surface); border-radius: 20px; overflow: hidden; }
 .muscles > li + li { border-top: 1px solid var(--trait); }
-.muscles summary { display: grid; grid-template-columns: 8.5rem 1fr 3rem; gap: .6rem; align-items: center; min-height: 3.25rem; padding: .6rem 1.1rem; cursor: pointer; list-style: none; }
+.muscles summary { display: grid; grid-template-columns: 8.5rem 1fr 5.25rem; gap: .6rem; align-items: center; min-height: 3.25rem; padding: .6rem 1.1rem; cursor: pointer; list-style: none; }
 .muscles summary::-webkit-details-marker { display: none; }
 .muscles .barre { height: .6rem; background: var(--trait); border-radius: 999px; overflow: hidden; }
 .muscles .barre i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
@@ -175,8 +175,9 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   main > section { max-width: 52rem; margin-inline: auto; }
 
   /* Clients : liste à gauche (fixe), profil à droite */
-  .maitre-detail { display: grid; grid-template-columns: 20rem minmax(0, 1fr); gap: 2.5rem; align-items: start; }
-  .maitre-detail > :first-child { position: sticky; top: 6rem; max-height: calc(100dvh - 7.5rem); overflow-y: auto; padding-right: .25rem; }
+  .maitre-detail { display: grid; grid-template-columns: 20rem minmax(0, 1fr); gap: 0; align-items: start; }
+  .maitre-detail > :not(:first-child) { padding-left: 2.25rem; min-width: 0; }
+  .maitre-detail > :first-child { position: sticky; top: 6rem; height: calc(100dvh - 7.5rem); overflow-y: auto; padding-right: 1.5rem; border-right: 1px solid var(--trait); }
   .retour.vers-liste { display: none; }
   .liste li.actif { background: var(--accent-doux); }
 
@@ -210,3 +211,11 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   .hors-ligne { top: 4rem; margin: 0; border-radius: 0; }
 }
 @keyframes apparaitre { from { opacity: 0; transform: scale(.97); } }
+
+/* Lisibilité : chiffres, unités et contraste */
+.stats strong { font-family: inherit; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.stats strong.texte { font-size: 1.3rem; line-height: 2.2rem; }
+.barres b, .muscles b { font-variant-numeric: tabular-nums; }
+.barres b small, .muscles b small { font-size: .75rem; font-weight: 500; color: var(--discret); }
+.barres b, .muscles b { white-space: nowrap; }
+.liste li.actif button.lien { color: var(--accent-fonce); font-weight: 700; }

@@ -12,6 +12,10 @@ type Derniere = { id: string; date_seance: string; duree_min: number | null; exe
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
 const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
+function ilYa(d: string) {
+  const jours = Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
+  return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} j`
+}
 
 export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => void }) {
   const client = useClient()
@@ -73,7 +77,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           <div className="stats">
             <div><strong>{total}</strong><span>séances</span></div>
             <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
-            <div><strong>{dernieres[0] ? courte(dernieres[0].date_seance) : '—'}</strong><span>dernière</span></div>
+            <div><strong className="texte" title={dernieres[0] ? courte(dernieres[0].date_seance) : undefined}>{dernieres[0] ? ilYa(dernieres[0].date_seance) : '—'}</strong><span>dernière séance</span></div>
           </div>
 
           <div className="deux-colonnes">
@@ -93,22 +97,27 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
               ))}
             </ul>
           ) : (
-            <p className="meta">{suivis.length ? 'Tous les objectifs sont atteints 🎯' : 'Aucun objectif chiffré pour ce client.'}</p>
+            suivis.length ? (
+              <p className="meta">Tous les objectifs sont atteints 🎯</p>
+            ) : (
+              <EtatVide titre="Aucun objectif chiffré" texte="Fixe une cible (poids, charge, test physique) pour suivre la progression de ce client." action={{ libelle: 'Fixer un objectif', onClick: () => onRubrique('objectifs') }} />
+            )
           )}
           {aSuivre.length > 3 && <p className="meta">+ {aSuivre.length - 3} autre(s) objectif(s) en cours</p>}
           {atteints > 0 && aSuivre.length > 0 && <p className="meta">🎯 {atteints} objectif(s) déjà atteint(s)</p>}
-          <button type="button" className="lien" onClick={() => onRubrique('objectifs')}>{suivis.length ? 'Voir les objectifs →' : 'Fixer un objectif →'}</button>
+          {suivis.length > 0 && <button type="button" className="lien" onClick={() => onRubrique('objectifs')}>Voir les objectifs →</button>}
 
             </div>
             <div>
           <h3>Muscles les plus travaillés (30 jours)</h3>
+          <p className="meta">Séries pondérées : une série compte en entier pour le muscle principal, pour moitié pour un secondaire, pour un quart pour un stabilisateur.</p>
           {muscles.length > 0 ? (
             <ul className="barres">
               {muscles.map(m => (
                 <li key={m.muscle}>
                   <span>{MUSCLES[m.muscle] ?? m.muscle}</span>
                   <div><i style={{ width: `${(m.total / muscles[0].total) * 100}%` }} /></div>
-                  <b>{fr(m.total)}</b>
+                  <b>{fr(m.total)}<small> séries</small></b>
                 </li>
               ))}
             </ul>
