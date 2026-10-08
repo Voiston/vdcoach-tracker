@@ -9,7 +9,7 @@ import Bibliotheque from './Bibliotheque'
 import Modeles from './Modeles'
 import Reglages from './Reglages'
 import Icone from './icones'
-import { BandeauReseau, Champ, EcranChargement, NavigationCtx } from './ui'
+import { BandeauReseau, Champ, EcranChargement, EtatVide, NavigationCtx, useEcranLarge } from './ui'
 import { Verification2FA } from './Auth2FA'
 
 type Route =
@@ -28,6 +28,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [route, setRoute] = useState<Route>({ page: 'clients' })
   const [sessionExpiree, setSessionExpiree] = useState(false)
+  const large = useEcranLarge()
   const [bandeau, setBandeau] = useState('') // message affiché après l'enregistrement (ex. nouveau record)
 
   useEffect(() => {
@@ -97,38 +98,50 @@ export default function App() {
         <header>
           <h1>VDCoach</h1>
         </header>
-        <BandeauReseau />
-        <main tabIndex={-1}>
-          {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
-          {route.page === 'clients' && (
-            <Accueil
-              onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
-              onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
-            />
-          )}
-          {route.page === 'client' && (
-            <Profil
-              key={route.clientId}
-              clientId={route.clientId}
-              rubrique={route.rubrique}
-              seanceId={route.seanceId ?? null}
-              onRubrique={(rubrique, seanceId = null) => naviguer({ page: 'client', clientId: route.clientId, rubrique, seanceId })}
-              onRetour={() => naviguer({ page: 'clients' })}
-              onSaved={m => {
-                naviguer({ page: 'client', clientId: route.clientId, rubrique: 'seances' })
-                setBandeau(m ?? '')
-              }}
-            />
-          )}
-          {route.page === 'exercices' && (
-            <>
-              <Bibliotheque />
-              <Modeles />
-            </>
-          )}
-          {route.page === 'reglages' && <Reglages />}
-        </main>
-        <nav>
+        <div className="contenu">
+          <BandeauReseau />
+          <main tabIndex={-1}>
+            {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
+            {(route.page === 'clients' || route.page === 'client') && (
+              // Sur grand écran : la liste des clients reste affichée à gauche, le profil s'ouvre à droite
+              <div className={large ? 'maitre-detail' : undefined}>
+                {(large || route.page === 'clients') && (
+                  <Accueil
+                    actifId={route.page === 'client' ? route.clientId : undefined}
+                    rechargerQuand={JSON.stringify(route)}
+                    onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+                    onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+                  />
+                )}
+                {route.page === 'client' && (
+                  <Profil
+                    key={route.clientId}
+                    clientId={route.clientId}
+                    rubrique={route.rubrique}
+                    seanceId={route.seanceId ?? null}
+                    onRubrique={(rubrique, seanceId = null) => naviguer({ page: 'client', clientId: route.clientId, rubrique, seanceId })}
+                    onRetour={() => naviguer({ page: 'clients' })}
+                    onSaved={m => {
+                      naviguer({ page: 'client', clientId: route.clientId, rubrique: 'seances' })
+                      setBandeau(m ?? '')
+                    }}
+                  />
+                )}
+                {large && route.page === 'clients' && (
+                  <EtatVide titre="Choisis un client" texte="Sélectionne un client dans la liste pour afficher son profil." />
+                )}
+              </div>
+            )}
+            {route.page === 'exercices' && (
+              <div className="page-exercices">
+                <Bibliotheque />
+                <Modeles />
+              </div>
+            )}
+            {route.page === 'reglages' && <Reglages />}
+          </main>
+        </div>
+        <nav aria-label="Navigation principale">
           {ONGLETS.map(o => (
             <button key={o.page} className={o.page === onglet ? 'actif' : ''} aria-current={o.page === onglet ? 'page' : undefined} onClick={() => naviguer({ page: o.page })}>
               <Icone nom={o.page} />

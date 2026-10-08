@@ -50,7 +50,7 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
 
   return (
     <ClientCtx.Provider value={{ client, recharger }}>
-      <button type="button" className="lien retour" onClick={saisie ? () => onRubrique('seances') : onRetour}>
+      <button type="button" className={saisie ? 'lien retour' : 'lien retour vers-liste'} onClick={saisie ? () => onRubrique('seances') : onRetour}>
         {saisie ? '← Séances' : '← Clients'}
       </button>
       <div className="profil-entete">

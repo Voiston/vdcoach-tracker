@@ -241,3 +241,16 @@ export function useClientComplet() {
   return c
 }
 export const useClient = () => useClientComplet().client
+
+/* ---------- Taille d'écran : true à partir de la largeur d'un ordinateur (ou d'une tablette en paysage) ---------- */
+export function useEcranLarge(requete = '(min-width: 960px)') {
+  const [large, setLarge] = useState(() => window.matchMedia(requete).matches)
+  useEffect(() => {
+    const media = window.matchMedia(requete)
+    const maj = () => setLarge(media.matches)
+    maj()
+    media.addEventListener('change', maj)
+    return () => media.removeEventListener('change', maj)
+  }, [requete])
+  return large
+}

@@ -76,6 +76,8 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
             <div><strong>{dernieres[0] ? courte(dernieres[0].date_seance) : '—'}</strong><span>dernière</span></div>
           </div>
 
+          <div className="deux-colonnes">
+            <div>
           {client.objectifs && (
             <>
               <h3>Objectif général</h3>
@@ -97,6 +99,8 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           {atteints > 0 && aSuivre.length > 0 && <p className="meta">🎯 {atteints} objectif(s) déjà atteint(s)</p>}
           <button type="button" className="lien" onClick={() => onRubrique('objectifs')}>{suivis.length ? 'Voir les objectifs →' : 'Fixer un objectif →'}</button>
 
+            </div>
+            <div>
           <h3>Muscles les plus travaillés (30 jours)</h3>
           {muscles.length > 0 ? (
             <ul className="barres">
@@ -131,6 +135,8 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
             <EtatVide titre="Aucune séance pour l'instant" texte={`Enregistre la première séance de ${client.prenom}.`} action={{ libelle: 'Nouvelle séance', onClick: () => onRubrique('seance') }} />
           )}
           <button type="button" className="lien" onClick={() => onRubrique('seances')}>Toutes les séances →</button>
+            </div>
+          </div>
         </>
       )}
     </section>

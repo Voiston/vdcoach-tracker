@@ -12,7 +12,12 @@ function ilYa(d: string) {
   return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} jours`
 }
 
-export default function Accueil({ onOuvrir, onNouvelleSeance }: { onOuvrir: (clientId: string) => void; onNouvelleSeance: (clientId: string) => void }) {
+export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, rechargerQuand }: {
+  onOuvrir: (clientId: string) => void
+  onNouvelleSeance: (clientId: string) => void
+  actifId?: string
+  rechargerQuand?: string
+}) {
   const [clients, setClients] = useState<Client[]>([])
   const [seances, setSeances] = useState<Resume[]>([])
   const [pret, setPret] = useState(false)
@@ -36,7 +41,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance }: { onOuvrir: (cli
 
   useEffect(() => {
     charger()
-  }, [])
+  }, [rechargerQuand])
 
   const derniere: Record<string, string> = {}
   for (const s of seances) derniere[s.client_id] ??= s.date_seance
@@ -47,7 +52,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance }: { onOuvrir: (cli
   const inactifs = clients.filter(c => !c.actif && correspond(c))
 
   const ligne = (c: Client) => (
-    <li key={c.id} className={c.actif ? '' : 'inactif'}>
+    <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
       <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
         <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
         <span className="meta">{derniere[c.id] ? `Dernière séance ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>

@@ -1,4 +1,4 @@
-.courbe { width: 100%; height: auto; color: var(--accent); background: var(--surface); border-radius: 20px; }
+.courbe { width: 100%; max-width: 38rem; height: auto; color: var(--accent); background: var(--surface); border-radius: 20px; }
 .courbe text { fill: var(--discret); }
 .courbe .axe { stroke: var(--trait); }
 
