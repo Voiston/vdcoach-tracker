@@ -14,9 +14,19 @@ type Point = { date: string; valeur: number }
 
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
 
+function ilYa(d: string) {
+  const jours = Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
+  return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} j`
+}
+
 function Courbe({ points, unite }: { points: Point[]; unite: string }) {
   if (points.length < 2)
-    return <p className="meta">{points.length ? `Une seule valeur : ${points[0].valeur} ${unite}` : 'Pas encore de données.'}</p>
+    return (
+      <div className="courbe-vide">
+        {points.length > 0 && <strong>{points[0].valeur} {unite}</strong>}
+        <span>{points.length ? 'Une seule valeur pour l’instant : la courbe apparaît dès la deuxième.' : 'Pas encore de données.'}</span>
+      </div>
+    )
 
   const W = 320, H = 150, P = 28
   const t = points.map(p => Date.parse(p.date))
@@ -150,17 +160,21 @@ export default function Suivi() {
       <div className="stats">
         <div><strong>{seances.length}</strong><span>séances</span></div>
         <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
-        <div><strong>{seances.length ? courte(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière</span></div>
+        <div><strong className="texte" title={seances.length ? courte(seances[seances.length - 1].date_seance) : undefined}>{seances.length ? ilYa(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière séance</span></div>
       </div>
 
+      <div className="deux-colonnes">
+      <div>
       <h3>Charges</h3>
       {noms.length ? (
         <>
           <select aria-label="Exercice" value={exoChoisi} onChange={e => setExo(e.target.value)}>
             {noms.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
+          <h4 className="sous-titre">Charge maximale par séance</h4>
           <Courbe points={pointsCharge} unite="kg" />
-          <p className="meta">Force maximale estimée (1RM, formule d'Epley, séries de 12 répétitions maximum)</p>
+          <h4 className="sous-titre">Force maximale estimée (1RM)</h4>
+          <p className="meta">Formule d’Epley, séries de 12 répétitions maximum.</p>
           <Courbe points={points1rm} unite="kg" />
         </>
       ) : (
@@ -184,6 +198,8 @@ export default function Suivi() {
         <p className="meta">Aucun record pour l'instant.</p>
       )}
 
+      </div>
+      <div>
       <h3>Mesures</h3>
       <select aria-label="Type de mesure" value={type} onChange={e => setType(e.target.value)}>
         {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
@@ -204,6 +220,8 @@ export default function Suivi() {
           </li>
         ))}
       </ul>
+      </div>
+      </div>
       </div>
     </section>
   )

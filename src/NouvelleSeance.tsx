@@ -300,7 +300,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   return (
     <>
     <form onSubmit={enregistrer}>
-      <h2>{seanceId ? 'Modifier la séance' : 'Nouvelle séance'}</h2>
+      <h3 className="titre-seance">{seanceId ? 'Modifier la séance' : 'Nouvelle séance'}</h3>
       {brouillon && (
         <div className="brouillon" role="status">
           <p>
@@ -313,8 +313,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           </div>
         </div>
       )}
-      <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
-      <div className="ligne">
+      <div className="entete-seance">
+        <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
         <Champ libelle="Durée (min)" erreur={verifier(duree, REGLES.duree)}><input inputMode="numeric" value={duree} onChange={e => setDuree(e.target.value)} /></Champ>
         <Champ libelle="Ressenti (1 à 10)" erreur={verifier(ressenti, REGLES.ressenti)}><input inputMode="numeric" value={ressenti} onChange={e => setRessenti(e.target.value)} /></Champ>
       </div>

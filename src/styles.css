@@ -164,12 +164,13 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   /* Barre du haut : nom de l'app à gauche, navigation à côté (toujours visible en faisant défiler) */
   .app { max-width: none; display: block; }
   .app::before { content: ''; position: fixed; inset: 0 0 auto 0; z-index: 4; height: 4rem; background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--trait); }
-  header { position: fixed; top: 0; left: 0; z-index: 5; display: flex; align-items: center; height: 4rem; padding: 0 1.75rem; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  header { position: fixed; top: 0; left: max(0px, calc((100vw - 96rem) / 2)); z-index: 5; display: flex; align-items: center; height: 4rem; padding: 0 2.5rem; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
   header h1 { font-size: 1.6rem; }
-  nav { position: fixed; top: 0; left: 11rem; bottom: auto; transform: none; z-index: 5; width: auto; height: 4rem; flex-direction: row; align-items: center; gap: .25rem; padding: 0; background: none; border-radius: 0; box-shadow: none; }
+  nav { position: fixed; top: 0; left: calc(max(0px, (100vw - 96rem) / 2) + 11.5rem); bottom: auto; transform: none; z-index: 5; width: auto; height: 4rem; flex-direction: row; align-items: center; gap: .25rem; padding: 0; background: none; border-radius: 0; box-shadow: none; }
   nav button { flex: none; flex-direction: row; gap: .55rem; min-height: 2.75rem; padding: .4rem 1.1rem; font-size: .95rem; border-radius: 999px; }
   nav button svg { width: 1.25rem; height: 1.25rem; }
-  nav button:hover:not(.actif) { background: var(--accent-doux); }
+  nav button:hover:not(.actif) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  nav button.actif { background: var(--accent-doux); color: var(--accent-fonce); font-weight: 700; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 35%, transparent); }
   .contenu { padding-top: 4rem; }
   main { max-width: 96rem; margin: 0 auto; padding: 2rem 2.5rem 3rem; }
   main > section { max-width: 52rem; margin-inline: auto; }
@@ -209,6 +210,21 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   .notifications { bottom: 1.5rem; }
   .mise-a-jour { top: 4.75rem; }
   .hors-ligne { top: 4rem; margin: 0; border-radius: 0; }
+
+  /* Formulaires : boutons à leur taille naturelle, champs de séance à largeur raisonnable */
+  form > button, form > select { align-self: flex-start; }
+  form > button[type="submit"] { min-width: 14rem; }
+  form > select { min-width: 18rem; }
+  .connexion > button { align-self: stretch; }
+  .profil > form { max-width: 54rem; }
+  .entete-seance { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .entete-seance > :first-child { grid-column: auto; }
+
+  /* Vue d'ensemble : la liste de gauche n'a pas besoin de répéter l'activité récente */
+  .maitre-detail .activite { display: none; }
+  .page-exercices > section > h3:first-child { margin-top: .4rem; }
+  .segments { display: inline-flex; }
+  .segments button { flex: none; padding-inline: 1.5rem; }
 }
 @keyframes apparaitre { from { opacity: 0; transform: scale(.97); } }
 
@@ -219,3 +235,12 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
 .barres b small, .muscles b small { font-size: .75rem; font-weight: 500; color: var(--discret); }
 .barres b, .muscles b { white-space: nowrap; }
 .liste li.actif button.lien { color: var(--accent-fonce); font-weight: 700; }
+
+/* Séance, courbes vides, sous-titres */
+.titre-seance { margin: .5rem 0 1rem; font-size: 1.25rem; }
+.entete-seance { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.entete-seance > :first-child { grid-column: 1 / -1; }
+.courbe-vide { display: flex; flex-direction: column; gap: .25rem; padding: 1.25rem 1.1rem; color: var(--discret); background: var(--surface); border: 1.5px dashed var(--bord); border-radius: 20px; }
+.courbe-vide strong { font-size: 1.5rem; color: var(--encre); font-variant-numeric: tabular-nums; }
+h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
+.puces { align-items: center; }

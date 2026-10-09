@@ -55,7 +55,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
     <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
       <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
         <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
-        <span className="meta">{derniere[c.id] ? `Dernière séance ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
+        <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
       </button>
       {c.actif && c.id !== actifId && <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>}
     </li>
@@ -86,7 +86,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
           {!actifs.length && <p className="meta">Aucun client ne correspond.</p>}
 
           {seances.length > 0 && !filtre && !actifId && (
-            <>
+            <div className="activite">
               <h3>Activité récente</h3>
               <ul className="liste">
                 {seances.slice(0, 5).map(s => (
@@ -98,7 +98,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           )}
 
           {inactifs.length > 0 && (

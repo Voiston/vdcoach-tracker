@@ -9,7 +9,8 @@ import Bibliotheque from './Bibliotheque'
 import Modeles from './Modeles'
 import Reglages from './Reglages'
 import Icone from './icones'
-import { BandeauReseau, Champ, EcranChargement, EtatVide, NavigationCtx, useEcranLarge } from './ui'
+import { BandeauReseau, Champ, EcranChargement, NavigationCtx, useEcranLarge } from './ui'
+import TableauDeBord from './TableauDeBord'
 import { Verification2FA } from './Auth2FA'
 
 type Route =
@@ -128,7 +129,10 @@ export default function App() {
                   />
                 )}
                 {large && route.page === 'clients' && (
-                  <EtatVide titre="Choisis un client" texte="Sélectionne un client dans la liste pour afficher son profil." />
+                  <TableauDeBord
+                    onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+                    onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+                  />
                 )}
               </div>
             )}

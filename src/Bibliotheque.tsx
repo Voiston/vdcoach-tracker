@@ -146,9 +146,10 @@ export default function Bibliotheque() {
           <li key={x.id}>
             <div>
               <strong>{x.nom}</strong>
-              <div className="puces"><span className="puce">{x.groupe}</span><span className="puce neutre">{x.materiel}</span></div>
+              <p className="meta">{x.groupe} · {x.materiel}</p>
               {x.exercice_muscles.length > 0 && (
                 <div className="puces">
+                  <span className="meta">Muscles :</span>
                   {[...x.exercice_muscles].sort((a, b) => Number(b.coefficient) - Number(a.coefficient)).map(m => (
                     <span key={m.muscle} className={`puce ${niveauDe(Number(m.coefficient))}`}>{MUSCLES[m.muscle] ?? m.muscle}</span>
                   ))}
