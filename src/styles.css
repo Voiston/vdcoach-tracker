@@ -198,11 +198,10 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   .deux-colonnes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 2.5rem; align-items: start; }
   .page-exercices { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 2.5rem; align-items: start; }
 
-  /* Séance : un exercice sur une seule ligne (nom à gauche, séries / répétitions / charge à droite) */
-  .exercice { display: grid; grid-template-columns: minmax(12rem, 2fr) minmax(0, 3fr); align-items: start; gap: .5rem 1rem; }
-  .exercice > .champ { grid-column: 1; grid-row: 1; }
-  .exercice > .ligne { grid-column: 2; grid-row: 1; }
-  .exercice > p { grid-column: 1 / -1; }
+  /* Séance : trois compteurs sur une ligne */
+  .compteurs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .compteurs .compteur:last-child { grid-column: auto; }
+  .barre-enregistrement { bottom: 1rem; }
 
   /* Fenêtres, notifications et bandeaux */
   .voile { align-items: center; }
@@ -244,3 +243,32 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
 .courbe-vide strong { font-size: 1.5rem; color: var(--encre); font-variant-numeric: tabular-nums; }
 h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
 .puces { align-items: center; }
+
+/* Saisie rapide d'une séance */
+.exercice-entete { display: flex; align-items: center; gap: .5rem; }
+.exercice-nom { flex: 1; justify-content: flex-start; min-height: 3.25rem; padding: .5rem 1rem; font-size: 1.0625rem; font-weight: 700; text-align: left; color: var(--encre); background: var(--fond); border: 1.5px solid var(--bord); box-shadow: none; }
+.exercice-nom:hover { background: var(--accent-doux); }
+.exercice-nom.vide { font-weight: 500; color: var(--discret); }
+.exercice-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.exercice-actions button { min-height: 2.5rem; padding: .3rem .9rem; font-size: .9rem; }
+.compteurs { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.compteurs .compteur:last-child { grid-column: 1 / -1; }
+.compteur-ligne { display: grid; grid-template-columns: 3.25rem minmax(0, 1fr) 3.25rem; gap: .35rem; }
+.compteur-ligne button { min-height: 3.25rem; padding: 0; font-size: 1.6rem; line-height: 1; color: var(--accent-fonce); background: var(--accent-doux); box-shadow: none; }
+.compteur-ligne button:hover { background: color-mix(in srgb, var(--accent) 22%, var(--accent-doux)); }
+.compteur-ligne input { text-align: center; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.barre-enregistrement { position: sticky; bottom: calc(.75rem + env(safe-area-inset-bottom)); z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .6rem .6rem 1.1rem; background: var(--surface); border-radius: 20px; box-shadow: var(--ombre); }
+.resume { font-weight: 700; line-height: 1.25; }
+.resume small { display: block; font-weight: 500; color: var(--discret); }
+@media (max-width: 959px) {
+  .en-saisie nav { display: none; }
+  .en-saisie main { padding-bottom: 1.5rem; }
+}
+
+/* Sélecteur d'exercice */
+.feuille.selecteur { display: flex; flex-direction: column; gap: .75rem; max-height: min(88dvh, 46rem); }
+.selecteur-liste { flex: 1; min-height: 6rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.selecteur-liste li + li { border-top: 1px solid var(--trait); }
+.selecteur-liste button { width: 100%; min-height: 3.5rem; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; padding: .6rem .5rem; text-align: left; font-weight: 600; color: var(--encre); background: none; border-radius: 10px; box-shadow: none; }
+.selecteur-liste button:hover { background: var(--accent-doux); }
+.puce.deja-fait { margin-left: .5rem; vertical-align: middle; }

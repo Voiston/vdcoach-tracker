@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
 import type { Client } from './Clients'
 
@@ -253,4 +253,46 @@ export function useEcranLarge(requete = '(min-width: 960px)') {
     return () => media.removeEventListener('change', maj)
   }, [requete])
   return large
+}
+
+/* ---------- Compteur : champ numérique avec boutons − et + (saisie rapide, sans clavier) ---------- */
+export function Compteur({ libelle, valeur, onChange, pas, min = 0, max, depart, decimal, erreur }: {
+  libelle: string
+  valeur: string
+  onChange: (valeur: string) => void
+  pas: number
+  min?: number
+  max?: number
+  depart?: number // valeur proposée au premier « + » quand le champ est vide
+  decimal?: boolean
+  erreur?: string
+}) {
+  const id = useId()
+
+  function bouger(delta: number) {
+    const actuel = valeur.trim() === '' ? null : Number(valeur.replace(',', '.'))
+    let suivant: number
+    if (actuel === null || Number.isNaN(actuel)) {
+      if (delta < 0) return
+      suivant = depart ?? pas
+    } else {
+      suivant = actuel + delta
+    }
+    suivant = Math.round(suivant * 100) / 100
+    if (suivant < min) suivant = min
+    if (max !== undefined && suivant > max) suivant = max
+    onChange(String(suivant).replace('.', ','))
+  }
+
+  return (
+    <div className={`champ compteur${erreur ? ' invalide' : ''}`} role="group" aria-labelledby={id}>
+      <span className="champ-libelle" id={id}>{libelle}</span>
+      <div className="compteur-ligne">
+        <button type="button" aria-label={`Diminuer : ${libelle}`} onClick={() => bouger(-pas)}>−</button>
+        <input inputMode={decimal ? 'decimal' : 'numeric'} value={valeur} onChange={e => onChange(e.target.value)} aria-labelledby={id} />
+        <button type="button" aria-label={`Augmenter : ${libelle}`} onClick={() => bouger(pas)}>+</button>
+      </div>
+      {erreur && <span className="champ-erreur" role="alert">{erreur}</span>}
+    </div>
+  )
 }

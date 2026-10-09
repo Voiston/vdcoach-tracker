@@ -92,10 +92,11 @@ export default function App() {
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
   const onglet = route.page === 'client' ? 'clients' : route.page
+  const enSaisie = route.page === 'client' && route.rubrique === 'seance'
 
   return (
     <NavigationCtx.Provider value={o => naviguer({ page: o as 'clients' | 'exercices' | 'reglages' })}>
-      <div className="app">
+      <div className={enSaisie ? 'app en-saisie' : 'app'}>
         <header>
           <h1>VDCoach</h1>
         </header>

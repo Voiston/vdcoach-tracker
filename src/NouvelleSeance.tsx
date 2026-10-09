@@ -3,7 +3,8 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
-import { Champ, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useClient, useNotifier } from './ui'
+import { Champ, Compteur, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useClient, useNotifier } from './ui'
+import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
 import type { Client } from './Clients'
 
 type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
@@ -35,6 +36,13 @@ function suggestion(d: Dernier): string {
   return `vise ${d.repetitions + 1} répétitions${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
 }
 
+// Valeurs proposées par le bouton « Progresser » (mêmes règles que le texte de suggestion)
+function proposition(d: Dernier) {
+  if (d.repetitions === null) return null
+  if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return { repetitions: d.repetitions, charge_kg: Number(d.charge_kg) + PAS_KG }
+  return { repetitions: d.repetitions + 1, charge_kg: d.charge_kg }
+}
+
 function DerniereFois({ d }: { d: Dernier }) {
   const conseil = suggestion(d)
   return (
@@ -46,7 +54,7 @@ function DerniereFois({ d }: { d: Dernier }) {
   )
 }
 
-type Fiche = { nom: string; notes: string | null; video_url: string | null }
+type Fiche = { nom: string; notes: string | null; video_url: string | null; groupe?: string; materiel?: string; exercice_muscles?: { muscle: string; coefficient: number }[] }
 
 function FicheExercice({ b }: { b: Fiche }) {
   const lien = b.video_url && /^https?:\/\//i.test(b.video_url) ? b.video_url : null
@@ -66,6 +74,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const notifier = useNotifier()
   const aller = useAller()
   const [feuilleModele, setFeuilleModele] = useState(false)
+  const [choix, setChoix] = useState<number | null>(null) // indice de l'exercice en cours de choix (sélecteur ouvert)
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
   const [duree, setDuree] = useState('')
@@ -148,7 +157,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   useEffect(() => {
     supabase
       .from('bibliotheque_exercices')
-      .select('nom, notes, video_url')
+      .select('nom, notes, video_url, groupe, materiel, exercice_muscles(muscle, coefficient)')
       .then(({ data }) => setBiblio(Object.fromEntries((data ?? []).map(x => [cle(x.nom), x as Fiche]))))
   }, [])
 
@@ -223,6 +232,43 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setBrouillon(null)
   }
 
+  function ouvrirNouveau() {
+    const derniere = lignes.length - 1
+    const reutilise = derniere >= 0 && !lignes[derniere].nom.trim() // une ligne vide existe déjà : on la réutilise
+    if (!reutilise) setLignes(l => [...l, vide()])
+    setChoix(reutilise ? derniere : lignes.length)
+  }
+
+  function choisirExercice(nom: string) {
+    const i = choix
+    if (i === null) return
+    setLignes(l => l.map((x, j) => (j === i ? { ...x, nom } : x)))
+    setChoix(null)
+  }
+
+  function fermerSelecteur() {
+    // une ligne vide ajoutée pour rien est retirée
+    if (choix !== null && !lignes[choix]?.nom.trim() && lignes.length > 1) setLignes(l => l.filter((_, j) => j !== choix))
+    setChoix(null)
+  }
+
+  function retirer(i: number) {
+    setLignes(l => (l.length > 1 ? l.filter((_, j) => j !== i) : [vide()]))
+  }
+
+  function copierDerniere(i: number) {
+    const d = derniers[cle(lignes[i].nom)]
+    if (!d) return
+    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(d.repetitions), charge_kg: txt(d.charge_kg) } : x)))
+  }
+
+  function progresser(i: number) {
+    const d = derniers[cle(lignes[i].nom)]
+    const p = d && proposition(d)
+    if (!d || !p) return
+    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(p.repetitions), charge_kg: txt(p.charge_kg) } : x)))
+  }
+
   function maj(i: number, champ: keyof Ligne, valeur: string) {
     setLignes(l => l.map((x, j) => (j === i ? { ...x, [champ]: valeur } : x)))
   }
@@ -293,7 +339,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   // Suggestions : exercices déjà saisis + bibliothèque (l'orthographe de la bibliothèque prime)
-  const suggestions = [...new Map([...noms, ...Object.values(biblio).map(b => b.nom)].map(n => [cle(n), n])).values()].sort()
+  // Exercices proposés dans le sélecteur : bibliothèque + exercices déjà saisis ailleurs
+  const choixExercices: ExoChoix[] = [
+    ...Object.values(biblio).map(b => ({ nom: b.nom, groupe: b.groupe, materiel: b.materiel, muscles: b.exercice_muscles ?? [] })),
+    ...[...new Map(noms.filter(n => !biblio[cle(n)]).map(n => [cle(n), n])).values()].map(n => ({ nom: n, muscles: [] })),
+  ]
+  const faits = new Set(Object.keys(derniers).map(normaliser))
+  const saisis = lignes.filter(l => l.nom.trim())
+  const nbSeries = saisis.reduce((total, l) => {
+    const n = num(l.series)
+    return total + (n && !Number.isNaN(n) ? n : 0)
+  }, 0)
   const invalide = verifier(duree, REGLES.duree) || verifier(ressenti, REGLES.ressenti)
     || lignes.some(l => verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
 
@@ -331,26 +387,54 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           )}
         </>
       )}
-      <datalist id="noms-exercices">{suggestions.map(n => <option key={n} value={n} />)}</datalist>
-      {lignes.map((l, i) => (
-        <div className="exercice" key={i}>
-          <Champ libelle="Exercice"><input list="noms-exercices" value={l.nom} onChange={e => maj(i, 'nom', e.target.value)} /></Champ>
-          {derniers[cle(l.nom)] && <DerniereFois d={derniers[cle(l.nom)]} />}
-          {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
-          <div className="ligne">
-            <Champ libelle="Séries" erreur={verifier(l.series, REGLES.series)}><input inputMode="numeric" value={l.series} onChange={e => maj(i, 'series', e.target.value)} /></Champ>
-            <Champ libelle="Répétitions" erreur={verifier(l.repetitions, REGLES.repetitions)}><input inputMode="numeric" value={l.repetitions} onChange={e => maj(i, 'repetitions', e.target.value)} /></Champ>
-            <Champ libelle="Charge (kg)" erreur={verifier(l.charge_kg, REGLES.charge)}><input inputMode="decimal" value={l.charge_kg} onChange={e => maj(i, 'charge_kg', e.target.value)} /></Champ>
+      {lignes.map((l, i) => {
+        const dernier = derniers[cle(l.nom)]
+        const prop = dernier ? proposition(dernier) : null
+        return (
+          <div className="exercice" key={i}>
+            <div className="exercice-entete">
+              <button
+                type="button"
+                className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
+                onClick={() => setChoix(i)}
+                aria-label={l.nom.trim() ? `Changer l'exercice : ${l.nom}` : 'Choisir un exercice'}
+              >
+                {l.nom.trim() || 'Choisir un exercice…'}
+              </button>
+              <button type="button" className="lien danger" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+            </div>
+            {dernier && (
+              <>
+                <DerniereFois d={dernier} />
+                <div className="exercice-actions">
+                  <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Comme la dernière fois</button>
+                  {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
+                </div>
+              </>
+            )}
+            <div className="compteurs">
+              <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
+              <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
+              <Compteur libelle="Charge (kg)" valeur={l.charge_kg} onChange={v => maj(i, 'charge_kg', v)} pas={PAS_KG} depart={dernier?.charge_kg ?? PAS_KG} decimal erreur={verifier(l.charge_kg, REGLES.charge)} />
+            </div>
+            {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
           </div>
-        </div>
-      ))}
-      <button type="button" className="secondaire" onClick={() => setLignes(l => [...l, vide()])}>+ Ajouter un exercice</button>
+        )
+      })}
+      <button type="button" className="secondaire" onClick={ouvrirNouveau}>+ Ajouter un exercice</button>
       <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)}>Enregistrer comme modèle</button>
 
       <Champ libelle="Notes"><textarea value={notes} onChange={e => setNotes(e.target.value)} /></Champ>
       <MessageErreur message={erreur} />
-      <button type="submit" disabled={envoi || Boolean(invalide)}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
+      <div className="barre-enregistrement">
+        <span className="resume">
+          {saisis.length} exercice{saisis.length > 1 ? 's' : ''}
+          <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
+        </span>
+        <button type="submit" disabled={envoi || Boolean(invalide)}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
+      </div>
     </form>
+    {choix !== null && <SelecteurExercice exercices={choixExercices} faits={faits} onChoisir={choisirExercice} onFermer={fermerSelecteur} />}
     {feuilleModele && (
       <FeuilleSaisie
         titre="Nouveau modèle"
