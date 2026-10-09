@@ -13,9 +13,12 @@ export async function chargerBibliothequeMuscles(): Promise<{ biblio?: Record<st
   return { biblio: Object.fromEntries((data as Reference[]).map(x => [cle(x.nom), x])) }
 }
 
-export async function chargerSeancesMuscles(clientId: string, jours: number): Promise<{ seances?: SeanceExo[]; erreur?: unknown }> {
-  const debut = new Date(Date.now() - jours * 86_400_000).toLocaleDateString('sv-SE')
-  const { data, error } = await supabase.from('seances').select('date_seance, exercices(nom, series)').eq('client_id', clientId).gte('date_seance', debut)
+// decalage : nombre de jours à remonter avant la période (ex. 30 jours avec un décalage de 30 = les 30 jours précédents)
+export async function chargerSeancesMuscles(clientId: string, jours: number, decalage = 0): Promise<{ seances?: SeanceExo[]; erreur?: unknown }> {
+  const jour = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString('sv-SE')
+  let q = supabase.from('seances').select('date_seance, exercices(nom, series)').eq('client_id', clientId).gte('date_seance', jour(jours + decalage))
+  if (decalage > 0) q = q.lt('date_seance', jour(decalage))
+  const { data, error } = await q
   if (error) return { erreur: error }
   return { seances: data as unknown as SeanceExo[] }
 }

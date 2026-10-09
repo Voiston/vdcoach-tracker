@@ -272,3 +272,17 @@ h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
 .selecteur-liste button { width: 100%; min-height: 3.5rem; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; padding: .6rem .5rem; text-align: left; font-weight: 600; color: var(--encre); background: none; border-radius: 10px; box-shadow: none; }
 .selecteur-liste button:hover { background: var(--accent-doux); }
 .puce.deja-fait { margin-left: .5rem; vertical-align: middle; }
+
+/* Courbes interactives */
+svg.courbe { touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.courbe .repere { stroke: var(--accent); stroke-opacity: .35; stroke-width: 1; }
+.courbe .cible { stroke: var(--succes); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.courbe text.cible-texte { fill: var(--succes); font-weight: 700; }
+.courbe .record { stroke: var(--succes); stroke-width: 2; }
+.courbe-info { margin-top: .5rem; font-variant-numeric: tabular-nums; }
+
+/* Variation par rapport à la période précédente */
+.muscles b small.delta { display: block; font-size: .75rem; font-weight: 700; }
+.muscles b small.delta.hausse { color: var(--accent-fonce); }
+.muscles b small.delta.nouveau { color: var(--accent); }
+.muscles b small.delta.baisse, .muscles b small.delta.stable { color: var(--discret); }

@@ -5,12 +5,22 @@ import { messageErreur } from './erreurs'
 import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
 import './suivi.css'
 import { TYPES } from './definitions'
+import Courbe, { type Point } from './Courbe'
 
 const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
 
 type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
 type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null; charge_kg: number | null; repetitions: number | null }[] }
-type Point = { date: string; valeur: number }
+
+// Marque les points qui battent tous les précédents (le premier point n'est pas un record)
+function marquerRecords(points: Point[]): Point[] {
+  let max = -Infinity
+  return points.map((p, i) => {
+    const record = i > 0 && p.valeur > max
+    max = Math.max(max, p.valeur)
+    return { ...p, record }
+  })
+}
 
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
 
@@ -19,47 +29,12 @@ function ilYa(d: string) {
   return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} j`
 }
 
-function Courbe({ points, unite }: { points: Point[]; unite: string }) {
-  if (points.length < 2)
-    return (
-      <div className="courbe-vide">
-        {points.length > 0 && <strong>{points[0].valeur} {unite}</strong>}
-        <span>{points.length ? 'Une seule valeur pour l’instant : la courbe apparaît dès la deuxième.' : 'Pas encore de données.'}</span>
-      </div>
-    )
-
-  const W = 320, H = 150, P = 28
-  const t = points.map(p => Date.parse(p.date))
-  const v = points.map(p => p.valeur)
-  const [t0, t1] = [Math.min(...t), Math.max(...t)]
-  const [lo, hi] = [Math.min(...v), Math.max(...v)]
-  const [v0, v1] = lo === hi ? [lo - 1, hi + 1] : [lo, hi]
-  const x = (ms: number) => P + ((ms - t0) / (t1 - t0 || 1)) * (W - 2 * P)
-  const y = (val: number) => H - P - ((val - v0) / (v1 - v0)) * (H - 2 * P)
-  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(t[i]).toFixed(1)},${y(p.valeur).toFixed(1)}`).join(' ')
-  const delta = v[v.length - 1] - v[0]
-
-  return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="courbe" role="img" aria-label="Courbe de progression">
-        <line x1={P} y1={H - P} x2={W - P} y2={H - P} className="axe" />
-        <path d={d} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((p, i) => <circle key={i} cx={x(t[i])} cy={y(p.valeur)} r="3" fill="currentColor" />)}
-        <text x={2} y={y(v1) + 4} fontSize="10">{hi}</text>
-        <text x={2} y={y(v0) + 4} fontSize="10">{lo}</text>
-        <text x={P} y={H - 8} fontSize="10">{courte(points[0].date)}</text>
-        <text x={W - P} y={H - 8} fontSize="10" textAnchor="end">{courte(points[points.length - 1].date)}</text>
-      </svg>
-      <p className="meta">{delta > 0 ? '+' : ''}{+delta.toFixed(1)} {unite} depuis le {courte(points[0].date)}</p>
-    </div>
-  )
-}
-
 export default function Suivi() {
   const [pret, setPret] = useState(false)
   const clientId = useClient().id
   const [mesures, setMesures] = useState<Mesure[]>([])
   const [seances, setSeances] = useState<SeanceExo[]>([])
+  const [objectifs, setObjectifs] = useState<{ source: string; reference: string; valeur_cible: number }[]>([])
   const [type, setType] = useState('poids')
   const [valeur, setValeur] = useState('')
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
@@ -72,16 +47,18 @@ export default function Suivi() {
 
   async function charger() {
     if (!clientId) return
-    const [m, s] = await Promise.all([
+    const [m, s, o] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
       supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
+      supabase.from('objectifs').select('source, reference, valeur_cible').eq('client_id', clientId).order('created_at'),
     ])
     setPret(true)
-    const err = m.error ?? s.error
+    const err = m.error ?? s.error ?? o.error
     if (err) return setErreur(messageErreur(err))
     setErreur('')
     setMesures(m.data as Mesure[])
     setSeances(s.data as unknown as SeanceExo[])
+    setObjectifs((o.data ?? []) as { source: string; reference: string; valeur_cible: number }[])
   }
 
   useEffect(() => {
@@ -125,6 +102,13 @@ export default function Suivi() {
   })
   const mesuresType = mesures.filter(m => m.type === type)
   const pointsMesure = mesuresType.map(m => ({ date: m.date_mesure, valeur: Number(m.valeur) }))
+  // Objectif chiffré le plus récent lié à l'exercice ou à la mesure affichés (ligne d'objectif sur la courbe)
+  const cibleDe = (source: string, correspond: (reference: string) => boolean) => {
+    const o = [...objectifs].reverse().find(x => x.source === source && correspond(x.reference))
+    return o ? { valeur: Number(o.valeur_cible) } : undefined
+  }
+  const cibleCharge = cibleDe('charge', r => r.trim().toLowerCase() === exoChoisi.trim().toLowerCase())
+  const cibleMesure = cibleDe('mesure', r => r === type)
   const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
   const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
 
@@ -172,10 +156,10 @@ export default function Suivi() {
             {noms.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
           <h4 className="sous-titre">Charge maximale par séance</h4>
-          <Courbe points={pointsCharge} unite="kg" />
+          <Courbe nom="Charge maximale" points={marquerRecords(pointsCharge)} unite="kg" cible={cibleCharge} />
           <h4 className="sous-titre">Force maximale estimée (1RM)</h4>
           <p className="meta">Formule d’Epley, séries de 12 répétitions maximum.</p>
-          <Courbe points={points1rm} unite="kg" />
+          <Courbe nom="Force maximale estimée" points={marquerRecords(points1rm)} unite="kg" />
         </>
       ) : (
         <p className="meta">Aucune charge enregistrée pour ce client.</p>
@@ -204,7 +188,7 @@ export default function Suivi() {
       <select aria-label="Type de mesure" value={type} onChange={e => setType(e.target.value)}>
         {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
       </select>
-      <Courbe points={pointsMesure} unite={TYPES[type].unite} />
+      <Courbe nom={TYPES[type].label} points={pointsMesure} unite={TYPES[type].unite} cible={cibleMesure} />
       <form onSubmit={e => lancer(() => ajouter(e))}>
         <div className="ligne">
           <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>

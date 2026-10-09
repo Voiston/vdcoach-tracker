@@ -13,6 +13,7 @@ export default function Muscles() {
   const clientId = useClient().id
   const [jours, setJours] = useState(30)
   const [seances, setSeances] = useState<SeanceExo[]>([])
+  const [precedent, setPrecedent] = useState<SeanceExo[]>([]) // même durée, juste avant la période affichée
   const [biblio, setBiblio] = useState<Record<string, Reference> | null>(null)
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
@@ -25,11 +26,13 @@ export default function Muscles() {
   }, [])
 
   async function charger() {
-    const { seances: lues, erreur: err } = await chargerSeancesMuscles(clientId, jours)
+    const [courante, precedente] = await Promise.all([chargerSeancesMuscles(clientId, jours), chargerSeancesMuscles(clientId, jours, jours)])
     setPret(true)
-    if (err || !lues) return setErreur(messageErreur(err))
+    const err = courante.erreur ?? precedente.erreur
+    if (err || !courante.seances || !precedente.seances) return setErreur(messageErreur(err))
     setErreur('')
-    setSeances(lues)
+    setSeances(courante.seances)
+    setPrecedent(precedente.seances)
   }
 
   useEffect(() => {
@@ -38,6 +41,18 @@ export default function Muscles() {
   }, [clientId, jours])
 
   const { parMuscle, nonClasses, seriesTotal } = calculerMuscles(seances, biblio)
+
+  // Comparaison avec la période précédente (masquée quand il n'y avait rien à comparer)
+  const avant = calculerMuscles(precedent, biblio)
+  const comparer = avant.seriesTotal > 0
+  const evolution = (actuel: number, ancien: number) => Math.round(((actuel - ancien) / ancien) * 100)
+  const formatEvolution = (pct: number) => (pct === 0 ? 'stable' : `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)} %`)
+  const variation = (muscle: string, actuel: number) => {
+    const ancien = avant.parMuscle[muscle]?.total ?? 0
+    if (!ancien) return { texte: 'nouveau', classe: 'nouveau' }
+    const pct = evolution(actuel, ancien)
+    return { texte: formatEvolution(pct), classe: pct > 0 ? 'hausse' : pct < 0 ? 'baisse' : 'stable' }
+  }
 
   const classement = Object.entries(parMuscle).sort((a, b) => b[1].total - a[1].total)
   const maximum = classement[0]?.[1].total ?? 1
@@ -65,7 +80,10 @@ export default function Muscles() {
 
       {prete && seances.length > 0 && (
         <>
-          <p className="meta">{seances.length} séance(s) · {seriesTotal} série(s) sur {jours} jours</p>
+          <p className="meta">
+            {seances.length} séance(s) · {seriesTotal} série(s) sur {jours} jours
+            {comparer && ` · ${formatEvolution(evolution(seriesTotal, avant.seriesTotal))} par rapport aux ${jours} jours précédents`}
+          </p>
           {classement[0] && (
             <p className="muscle-top">
               Le plus travaillé : <strong>{MUSCLES[classement[0][0]] ?? classement[0][0]}</strong> ({fr(classement[0][1].total)} séries pondérées)
@@ -79,7 +97,10 @@ export default function Muscles() {
                   <summary>
                     <span>{MUSCLES[muscle] ?? muscle}</span>
                     <div className="barre"><i style={{ width: `${(v.total / maximum) * 100}%` }} /></div>
-                    <b>{fr(v.total)}<small> séries</small></b>
+                    <b>
+                      {fr(v.total)}<small> séries</small>
+                      {comparer && <small className={`delta ${variation(muscle, v.total).classe}`}>{variation(muscle, v.total).texte}</small>}
+                    </b>
                   </summary>
                   <ul>
                     {[...v.apports].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient).map(a => (
