@@ -11,17 +11,21 @@ import Reglages from './Reglages'
 import Icone from './icones'
 import { BandeauReseau, Champ, EcranChargement, NavigationCtx, useEcranLarge } from './ui'
 import TableauDeBord from './TableauDeBord'
+import Facturation from './Facturation'
+import Palette from './Palette'
 import { Verification2FA } from './Auth2FA'
 
 type Route =
   | { page: 'clients' }
-  | { page: 'exercices' }
+  | { page: 'exercices'; recherche?: string }
+  | { page: 'facturation' }
   | { page: 'reglages' }
   | { page: 'client'; clientId: string; rubrique: Rubrique; seanceId?: string | null }
 
 const ONGLETS = [
   { page: 'clients', libelle: 'Clients' },
   { page: 'exercices', libelle: 'Exercices' },
+  { page: 'facturation', libelle: 'Facturation' },
   { page: 'reglages', libelle: 'Réglages' },
 ] as const
 
@@ -54,6 +58,19 @@ export default function App() {
     if (!session) setExige2fa(undefined)
     else verifierNiveau()
   }, [session])
+
+  // Recherche rapide : Ctrl + K (ou Cmd + K) depuis n'importe où
+  const [palette, setPalette] = useState(false)
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPalette(p => !p)
+      }
+    }
+    window.addEventListener('keydown', touche)
+    return () => window.removeEventListener('keydown', touche)
+  }, [])
 
   // Chaque changement d'écran est inscrit dans l'historique : le bouton « retour » du téléphone remonte d'un écran
   useEffect(() => {
@@ -95,10 +112,15 @@ export default function App() {
   const enSaisie = route.page === 'client' && route.rubrique === 'seance'
 
   return (
-    <NavigationCtx.Provider value={o => naviguer({ page: o as 'clients' | 'exercices' | 'reglages' })}>
+    <NavigationCtx.Provider value={o => naviguer({ page: o as 'clients' | 'exercices' | 'facturation' | 'reglages' })}>
       <div className={enSaisie ? 'app en-saisie' : 'app'}>
         <header>
           <h1>VDCoach</h1>
+          <button type="button" className="recherche-rapide" onClick={() => setPalette(true)} aria-label="Recherche rapide (Ctrl + K)">
+            <Icone nom="recherche" />
+            <span className="libelle">Rechercher…</span>
+            <kbd>Ctrl K</kbd>
+          </button>
         </header>
         <div className="contenu">
           <BandeauReseau />
@@ -139,10 +161,11 @@ export default function App() {
             )}
             {route.page === 'exercices' && (
               <div className="page-exercices">
-                <Bibliotheque />
+                <Bibliotheque key={route.recherche ?? ''} rechercheInitiale={route.recherche} />
                 <Modeles />
               </div>
             )}
+            {route.page === 'facturation' && <Facturation onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })} />}
             {route.page === 'reglages' && <Reglages />}
           </main>
         </div>
@@ -154,6 +177,14 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <Palette
+          ouvert={palette}
+          onFermer={() => setPalette(false)}
+          onClient={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+          onSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+          onExercice={nom => naviguer({ page: 'exercices', recherche: nom })}
+          onPage={page => naviguer({ page: page as 'clients' | 'exercices' | 'facturation' | 'reglages' })}
+        />
       </div>
     </NavigationCtx.Provider>
   )

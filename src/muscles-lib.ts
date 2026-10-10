@@ -50,3 +50,14 @@ export function calculerMuscles(seances: SeanceExo[], biblio: Record<string, Ref
     }
   return { parMuscle, nonClasses, seriesTotal }
 }
+
+// Évolution d'un volume par rapport à la période précédente
+export const evolutionPct = (actuel: number, ancien: number) => Math.round(((actuel - ancien) / ancien) * 100)
+export const libelleEvolution = (pct: number) => (pct === 0 ? 'stable' : `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)} %`)
+
+export function variationMuscle(avant: Record<string, Volume>, muscle: string, actuel: number) {
+  const ancien = avant[muscle]?.total ?? 0
+  if (!ancien) return { texte: 'nouveau', classe: 'nouveau' }
+  const pct = evolutionPct(actuel, ancien)
+  return { texte: libelleEvolution(pct), classe: pct > 0 ? 'hausse' : pct < 0 ? 'baisse' : 'stable' }
+}

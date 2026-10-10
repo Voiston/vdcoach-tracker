@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
 import { messageErreur } from './erreurs'
-import { ClientCtx, ErreurChargement, Squelette } from './ui'
+import { libelleMois, resumeMois } from './facturation-lib'
+import { Avatar, ClientCtx, ErreurChargement, Squelette } from './ui'
 import Apercu from './Apercu'
 import Seances from './Seances'
 import SuiviHub from './SuiviHub'
@@ -31,6 +32,7 @@ type Props = {
 export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRetour, onSaved }: Props) {
   const [client, setClient] = useState<Client | null>(null)
   const [erreur, setErreur] = useState('')
+  const [resume, setResume] = useState<{ n: number; avec: string[]; mois: string } | null>(null)
 
   async function recharger() {
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).single()
@@ -42,6 +44,11 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   useEffect(() => {
     recharger()
   }, [clientId])
+
+  // Nombre de séances réalisées ce mois-ci (recalculé quand on change de rubrique, par exemple après un enregistrement)
+  useEffect(() => {
+    if (client) resumeMois(client).then(setResume)
+  }, [client?.id, client?.groupe_facturation, rubrique])
 
   if (erreur && !client) return <ErreurChargement message={erreur} />
   if (!client) return <Squelette lignes={3} />
@@ -55,8 +62,14 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
         {saisie ? '← Séances' : '← Clients'}
       </button>
       <div className="profil-entete">
-        <h2>{client.prenom} {client.nom}</h2>
+        <h2><Avatar client={client} grand />{client.prenom} {client.nom}</h2>
         {!client.actif && <p className="meta">Client archivé</p>}
+        {resume && (
+          <p className="meta">
+            {resume.n} séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
+            {resume.avec.length > 0 && ` · facturées avec ${resume.avec.join(' & ')}`}
+          </p>
+        )}
         {client.points_attention && <p className="attention">⚠ {client.points_attention}</p>}
         {!saisie && <button type="button" onClick={() => onRubrique('seance')}>+ Nouvelle séance</button>}
       </div>

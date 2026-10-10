@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette } from './ui'
+import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import { FormulaireClient, type Client } from './Clients'
 
 type Resume = { id: string; client_id: string; date_seance: string }
@@ -45,6 +45,9 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
 
   const derniere: Record<string, string> = {}
   for (const s of seances) derniere[s.client_id] ??= s.date_seance
+  const debutMois = `${new Date().toLocaleDateString('sv-SE').slice(0, 7)}-01`
+  const ceMois: Record<string, number> = {}
+  for (const s of seances) if (s.date_seance >= debutMois) ceMois[s.client_id] = (ceMois[s.client_id] ?? 0) + 1
   const par = Object.fromEntries(clients.map(c => [c.id, c]))
   const filtre = recherche.trim().toLowerCase()
   const correspond = (c: Client) => `${c.prenom} ${c.nom ?? ''}`.toLowerCase().includes(filtre)
@@ -54,8 +57,11 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
   const ligne = (c: Client) => (
     <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
       <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
-        <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
-        <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
+        <Avatar client={c} />
+        <span className="ligne-texte">
+          <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
+          <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}{ceMois[c.id] ? ` · ${ceMois[c.id]} ce mois-ci` : ''}</span>
+        </span>
       </button>
       {c.actif && c.id !== actifId && <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>}
     </li>
@@ -92,8 +98,11 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
                 {seances.slice(0, 5).map(s => (
                   <li key={s.id}>
                     <button type="button" className="ligne-client" onClick={() => onOuvrir(s.client_id)}>
-                      <strong>{par[s.client_id]?.prenom ?? 'Client'} {par[s.client_id]?.nom ?? ''}</strong>
-                      <span className="meta">{dateFr(s.date_seance)}</span>
+                      {par[s.client_id] && <Avatar client={par[s.client_id]} />}
+                      <span className="ligne-texte">
+                        <strong>{par[s.client_id]?.prenom ?? 'Client'} {par[s.client_id]?.nom ?? ''}</strong>
+                        <span className="meta">{dateFr(s.date_seance)}</span>
+                      </span>
                     </button>
                   </li>
                 ))}

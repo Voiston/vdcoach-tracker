@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
 import type { Client } from './Clients'
+import Icone from './icones'
 
 /** Silhouettes grises animées, affichées pendant le chargement d'une liste. */
 export function Squelette({ lignes = 3 }: { lignes?: number }) {
@@ -294,5 +295,28 @@ export function Compteur({ libelle, valeur, onChange, pas, min = 0, max, depart,
       </div>
       {erreur && <span className="champ-erreur" role="alert">{erreur}</span>}
     </div>
+  )
+}
+
+/* ---------- Pastille d'initiales (couleur stable pour un même client) ---------- */
+export function Avatar({ client, grand }: { client: { id: string; prenom: string; nom: string | null }; grand?: boolean }) {
+  const initiales = `${client.prenom.trim()[0] ?? ''}${client.nom?.trim()[0] ?? ''}`.toUpperCase()
+  let h = 0
+  for (const c of client.id) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  const teinte = [150, 185, 215, 255, 325, 25][h % 6]
+  return (
+    <span className={`avatar${grand ? ' grand' : ''}`} style={{ '--h': teinte } as React.CSSProperties} aria-hidden="true">
+      {initiales || '?'}
+    </span>
+  )
+}
+
+/* ---------- Titre de section avec petite icône ---------- */
+export function TitreSection({ icone, children }: { icone: string; children: ReactNode }) {
+  return (
+    <h3 className="titre-icone">
+      <Icone nom={icone} />
+      {children}
+    </h3>
   )
 }

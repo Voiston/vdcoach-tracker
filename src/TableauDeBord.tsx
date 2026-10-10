@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette } from './ui'
+import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import type { Client } from './Clients'
 
 type Resume = { id: string; client_id: string; date_seance: string; duree_min: number | null }
@@ -72,8 +72,11 @@ export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir
               {aRelancer.map(({ c, jours }) => (
                 <li key={c.id}>
                   <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
-                    <strong>{c.prenom} {c.nom}</strong>
-                    <span className="meta">{jours === null ? 'Aucune séance enregistrée' : `Dernière : ${ilYa(jours)}`}</span>
+                    <Avatar client={c} />
+                    <span className="ligne-texte">
+                      <strong>{c.prenom} {c.nom}</strong>
+                      <span className="meta">{jours === null ? 'Aucune séance enregistrée' : `Dernière : ${ilYa(jours)}`}</span>
+                    </span>
                   </button>
                   <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>
                 </li>
@@ -91,8 +94,11 @@ export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir
               {seances.slice(0, 8).map(s => (
                 <li key={s.id}>
                   <button type="button" className="ligne-client" onClick={() => onOuvrir(s.client_id)}>
-                    <strong>{par[s.client_id]?.prenom ?? 'Client'} {par[s.client_id]?.nom ?? ''}</strong>
-                    <span className="meta">{dateFr(s.date_seance)}{s.duree_min ? ` · ${s.duree_min} min` : ''}</span>
+                    {par[s.client_id] && <Avatar client={par[s.client_id]} />}
+                    <span className="ligne-texte">
+                      <strong>{par[s.client_id]?.prenom ?? 'Client'} {par[s.client_id]?.nom ?? ''}</strong>
+                      <span className="meta">{dateFr(s.date_seance)}{s.duree_min ? ` · ${s.duree_min} min` : ''}</span>
+                    </span>
                   </button>
                 </li>
               ))}

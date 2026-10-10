@@ -10,6 +10,7 @@ export type Client = {
   objectifs: string | null
   points_attention: string | null
   actif: boolean
+  groupe_facturation: string | null
 }
 
 export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) => void; onAnnuler: () => void }) {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
+import GroupeFacturation from './GroupeFacturation'
 import { Champ, MessageErreur, useClientComplet, useNotifier, useOccupe } from './ui'
 
 export default function Fiche({ onRetour }: { onRetour: () => void }) {
@@ -45,6 +46,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
         <MessageErreur message={erreur} />
         <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer la fiche'}</button>
       </form>
+      <GroupeFacturation />
       <h3>Archivage</h3>
       <p className="meta">Un client archivé disparaît de la liste principale, mais ses séances sont conservées.</p>
       <button type="button" className="secondaire" onClick={basculerActif}>{client.actif ? 'Archiver ce client' : 'Réactiver ce client'}</button>

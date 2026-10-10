@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { EtatVide, MessageErreur, Squelette, useClient } from './ui'
+import { EtatVide, MessageErreur, Squelette, TitreSection, useClient } from './ui'
 import { MUSCLES } from './definitions'
 import type { Rubrique } from './Profil'
 import JaugeObjectif from './JaugeObjectif'
 import { chargerObjectifs, etatObjectif, valeurActuelle, type DonneesObjectifs } from './objectifs-lib'
-import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles } from './muscles-lib'
+import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle } from './muscles-lib'
 
 type Derniere = { id: string; date_seance: string; duree_min: number | null; exercices: { nom: string; ordre: number }[] }
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -25,11 +25,12 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const [ceMois, setCeMois] = useState(0)
   const [dernieres, setDernieres] = useState<Derniere[]>([])
   const [donnees, setDonnees] = useState<DonneesObjectifs | null>(null)
-  const [muscles, setMuscles] = useState<{ muscle: string; total: number }[]>([])
+  const [muscles, setMuscles] = useState<{ muscle: string; total: number; variation: { texte: string; classe: string } | null }[]>([])
+  const [evolution, setEvolution] = useState<string | null>(null) // évolution du volume total vs les 30 jours précédents
 
   async function charger() {
     const debutMois = `${new Date().toLocaleDateString('sv-SE').slice(0, 7)}-01`
-    const [t, m, d, o, b, s30] = await Promise.all([
+    const [t, m, d, o, b, s30, p30] = await Promise.all([
       supabase.from('seances').select('id', { count: 'exact', head: true }).eq('client_id', client.id),
       supabase.from('seances').select('id', { count: 'exact', head: true }).eq('client_id', client.id).gte('date_seance', debutMois),
       supabase.from('seances').select('id, date_seance, duree_min, exercices(nom, ordre)').eq('client_id', client.id)
@@ -37,21 +38,25 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
       chargerObjectifs(client.id),
       chargerBibliothequeMuscles(),
       chargerSeancesMuscles(client.id, 30),
+      chargerSeancesMuscles(client.id, 30, 30),
     ])
     setPret(true)
-    const err = t.error ?? m.error ?? d.error ?? o.erreur ?? b.erreur ?? s30.erreur
+    const err = t.error ?? m.error ?? d.error ?? o.erreur ?? b.erreur ?? s30.erreur ?? p30.erreur
     if (err) return setErreur(messageErreur(err))
     setErreur('')
     setTotal(t.count ?? 0)
     setCeMois(m.count ?? 0)
     setDernieres(d.data as unknown as Derniere[])
     setDonnees(o.donnees ?? null)
-    const { parMuscle } = calculerMuscles(s30.seances ?? [], b.biblio ?? null)
+    const courante = calculerMuscles(s30.seances ?? [], b.biblio ?? null)
+    const avant = calculerMuscles(p30.seances ?? [], b.biblio ?? null)
+    const comparer = avant.seriesTotal > 0 // sans séance sur la période précédente, il n'y a rien à comparer
+    setEvolution(comparer ? libelleEvolution(evolutionPct(courante.seriesTotal, avant.seriesTotal)) : null)
     setMuscles(
-      Object.entries(parMuscle)
+      Object.entries(courante.parMuscle)
         .sort((x, y) => y[1].total - x[1].total)
         .slice(0, 3)
-        .map(([muscle, v]) => ({ muscle, total: v.total })),
+        .map(([muscle, v]) => ({ muscle, total: v.total, variation: comparer ? variationMuscle(avant.parMuscle, muscle, v.total) : null })),
     )
   }
 
@@ -80,8 +85,8 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
             <div><strong className="texte" title={dernieres[0] ? courte(dernieres[0].date_seance) : undefined}>{dernieres[0] ? ilYa(dernieres[0].date_seance) : '—'}</strong><span>dernière séance</span></div>
           </div>
 
-          <div className="deux-colonnes">
-            <div>
+          <div className="colonnes-auto">
+            <div className="groupe">
           {client.objectifs && (
             <>
               <h3>Objectif général</h3>
@@ -89,7 +94,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
             </>
           )}
 
-          <h3>Objectifs chiffrés</h3>
+          <TitreSection icone="objectif">Objectifs chiffrés</TitreSection>
           {aSuivre.length > 0 ? (
             <ul className="liste">
               {aSuivre.slice(0, 3).map(x => (
@@ -108,16 +113,17 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           {suivis.length > 0 && <button type="button" className="lien" onClick={() => onRubrique('objectifs')}>Voir les objectifs →</button>}
 
             </div>
-            <div>
-          <h3>Muscles les plus travaillés (30 jours)</h3>
+            <div className="groupe">
+          <TitreSection icone="muscles">Muscles les plus travaillés (30 jours)</TitreSection>
           <p className="meta">Séries pondérées : une série compte en entier pour le muscle principal, pour moitié pour un secondaire, pour un quart pour un stabilisateur.</p>
+          {evolution && <p className="meta">{evolution} par rapport aux 30 jours précédents</p>}
           {muscles.length > 0 ? (
             <ul className="barres">
               {muscles.map(m => (
                 <li key={m.muscle}>
                   <span>{MUSCLES[m.muscle] ?? m.muscle}</span>
                   <div><i style={{ width: `${(m.total / muscles[0].total) * 100}%` }} /></div>
-                  <b>{fr(m.total)}<small> séries</small></b>
+                  <b>{fr(m.total)}<small> séries</small>{m.variation && <small className={`delta ${m.variation.classe}`}>{m.variation.texte}</small>}</b>
                 </li>
               ))}
             </ul>
@@ -126,7 +132,9 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           )}
           <button type="button" className="lien" onClick={() => onRubrique('suivi')}>Voir le détail →</button>
 
-          <h3>Dernières séances</h3>
+            </div>
+            <div className="groupe">
+          <TitreSection icone="calendrier">Dernières séances</TitreSection>
           {dernieres.length ? (
             <ul className="liste">
               {dernieres.map(s => (

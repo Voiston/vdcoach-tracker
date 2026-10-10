@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
+import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
 import { Champ, Compteur, ErreurChargement, EtatVide, FeuilleSaisie, MessageErreur, Squelette, useAller, useClient, useNotifier } from './ui'
 import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
@@ -88,6 +89,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [biblio, setBiblio] = useState<Record<string, Fiche>>({})
   const [erreur, setErreur] = useState('')
   const [envoi, setEnvoi] = useState(false)
+  // Séance partagée (couple, trio) : une séance est enregistrée pour chaque participant, sous un même identifiant de séance
+  const [autres, setAutres] = useState<{ id: string; prenom: string; nom: string | null; groupe_facturation: string | null }[]>([])
+  const [invites, setInvites] = useState<string[]>([])
+  const [copierCharges, setCopierCharges] = useState(false)
+
+  useEffect(() => {
+    if (seanceId) return
+    supabase.from('clients').select('id, prenom, nom, groupe_facturation').eq('actif', true).neq('id', clientId).order('prenom').then(({ data }) => setAutres(data ?? []))
+  }, [seanceId, clientId])
 
   useEffect(() => {
     supabase
@@ -293,13 +303,35 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setEnvoi(false)
   }
 
+  const prenomDe = (id: string) => autres.find(c => c.id === id)?.prenom ?? 'client'
+
+  // Enregistre la même séance pour chaque participant (mêmes exercices ; les charges seulement si on le demande)
+  async function creerSeancesPartagees(sessionId: string, exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }[]): Promise<string[]> {
+    const echec = invites.map(prenomDe)
+    const { data, error } = await supabase
+      .from('seances')
+      .insert(invites.map(cid => ({ client_id: cid, date_seance: date, duree_min: num(duree), session_id: sessionId })))
+      .select('id, client_id')
+    if (error || !data) return echec
+    const lignesExos = data.flatMap(s => exos.map(x => ({ seance_id: s.id, ordre: x.ordre, nom: x.nom, series: x.series, repetitions: x.repetitions, charge_kg: copierCharges ? x.charge_kg : null })))
+    if (lignesExos.length) {
+      const { error: erreurExos } = await supabase.from('exercices').insert(lignesExos)
+      if (erreurExos) {
+        await supabase.from('seances').delete().in('id', data.map(s => s.id))
+        return echec
+      }
+    }
+    return []
+  }
+
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault()
     setEnvoi(true)
     setErreur('')
     const records = await detecterRecords()
 
-    const champs = { client_id: clientId, date_seance: date, duree_min: num(duree), ressenti: num(ressenti), notes: notes.trim() || null }
+    const sessionId = !seanceId && invites.length ? crypto.randomUUID() : null
+    const champs = { client_id: clientId, date_seance: date, duree_min: num(duree), ressenti: num(ressenti), notes: notes.trim() || null, ...(sessionId ? { session_id: sessionId } : {}) }
     let id = seanceId
     if (id) {
       const { error } = await supabase.from('seances').update(champs).eq('id', id)
@@ -332,9 +364,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       const { error } = await supabase.from('exercices').delete().in('id', anciens)
       if (error) return echec(messageErreur(error))
     }
+    const absents = sessionId ? await creerSeancesPartagees(sessionId, exercices) : []
     setEnvoi(false)
     if (!seanceId) effacerBrouillon(clientId)
-    notifier(seanceId ? 'Séance modifiée' : 'Séance enregistrée')
+    if (seanceId) {
+      notifier('Séance modifiée')
+    } else {
+      const r = await resumeMois(client) // calculé après l'enregistrement : la séance du jour est comprise
+      const base = invites.length ? `Séance enregistrée pour ${[client.prenom, ...invites.map(prenomDe)].join(' & ')}` : 'Séance enregistrée'
+      notifier(r ? `${base} · ${r.n} séance${r.n > 1 ? 's' : ''} en ${libelleMois(r.mois)}` : base)
+      if (absents.length) notifier(`Pas enregistrée pour : ${absents.join(', ')}. Ajoute-la depuis leur profil.`)
+    }
     onSaved(records.length ? `🏆 ${records.length > 1 ? 'Nouveaux records' : 'Nouveau record'} : ${records.join(' · ')}` : undefined)
   }
 
@@ -350,6 +390,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const n = num(l.series)
     return total + (n && !Number.isNaN(n) ? n : 0)
   }, 0)
+  // Partenaires proposés d'emblée : les clients du même groupe de facturation
+  const partenaires = autres.filter(c => client.groupe_facturation && c.groupe_facturation === client.groupe_facturation)
+  const puces = [...partenaires, ...invites.filter(id => !partenaires.some(p => p.id === id)).map(id => autres.find(c => c.id === id)).filter(Boolean) as typeof autres]
+  const basculerInvite = (id: string) => setInvites(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
   const invalide = verifier(duree, REGLES.duree) || verifier(ressenti, REGLES.ressenti)
     || lignes.some(l => verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
 
@@ -374,6 +418,34 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         <Champ libelle="Durée (min)" erreur={verifier(duree, REGLES.duree)}><input inputMode="numeric" value={duree} onChange={e => setDuree(e.target.value)} /></Champ>
         <Champ libelle="Ressenti (1 à 10)" erreur={verifier(ressenti, REGLES.ressenti)}><input inputMode="numeric" value={ressenti} onChange={e => setRessenti(e.target.value)} /></Champ>
       </div>
+
+      {!seanceId && autres.length > 0 && (
+        <div className="participants">
+          <span className="champ-libelle">Séance partagée avec</span>
+          {puces.length > 0 && (
+            <div className="puces">
+              {puces.map(c => (
+                <button key={c.id} type="button" className={`puce-choix${invites.includes(c.id) ? ' actif' : ''}`} aria-pressed={invites.includes(c.id)} onClick={() => basculerInvite(c.id)}>
+                  {invites.includes(c.id) ? '✓ ' : '+ '}{c.prenom}
+                </button>
+              ))}
+            </div>
+          )}
+          <select aria-label="Ajouter un autre client à la séance" value="" onChange={e => e.target.value && setInvites(l => [...l, e.target.value])}>
+            <option value="">Ajouter un autre client…</option>
+            {autres.filter(c => !puces.some(p => p.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+          </select>
+          {invites.length > 0 && (
+            <>
+              <p className="meta">La séance sera enregistrée pour chaque participant, avec les mêmes exercices, et ne comptera que pour une séance en facturation.</p>
+              <label className="case">
+                <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
+                Copier aussi les charges (sinon à compléter dans leur profil)
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
       <h3>Exercices</h3>
       {!seanceId && (

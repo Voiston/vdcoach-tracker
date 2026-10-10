@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { messageErreur } from './erreurs'
 import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, type Reference, type SeanceExo } from './muscles-lib'
+import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle, type Reference, type SeanceExo } from './muscles-lib'
 
 const PERIODES = [7, 30, 90]
 const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
@@ -45,14 +45,6 @@ export default function Muscles() {
   // Comparaison avec la période précédente (masquée quand il n'y avait rien à comparer)
   const avant = calculerMuscles(precedent, biblio)
   const comparer = avant.seriesTotal > 0
-  const evolution = (actuel: number, ancien: number) => Math.round(((actuel - ancien) / ancien) * 100)
-  const formatEvolution = (pct: number) => (pct === 0 ? 'stable' : `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)} %`)
-  const variation = (muscle: string, actuel: number) => {
-    const ancien = avant.parMuscle[muscle]?.total ?? 0
-    if (!ancien) return { texte: 'nouveau', classe: 'nouveau' }
-    const pct = evolution(actuel, ancien)
-    return { texte: formatEvolution(pct), classe: pct > 0 ? 'hausse' : pct < 0 ? 'baisse' : 'stable' }
-  }
 
   const classement = Object.entries(parMuscle).sort((a, b) => b[1].total - a[1].total)
   const maximum = classement[0]?.[1].total ?? 1
@@ -82,7 +74,7 @@ export default function Muscles() {
         <>
           <p className="meta">
             {seances.length} séance(s) · {seriesTotal} série(s) sur {jours} jours
-            {comparer && ` · ${formatEvolution(evolution(seriesTotal, avant.seriesTotal))} par rapport aux ${jours} jours précédents`}
+            {comparer && ` · ${libelleEvolution(evolutionPct(seriesTotal, avant.seriesTotal))} par rapport aux ${jours} jours précédents`}
           </p>
           {classement[0] && (
             <p className="muscle-top">
@@ -99,7 +91,7 @@ export default function Muscles() {
                     <div className="barre"><i style={{ width: `${(v.total / maximum) * 100}%` }} /></div>
                     <b>
                       {fr(v.total)}<small> séries</small>
-                      {comparer && <small className={`delta ${variation(muscle, v.total).classe}`}>{variation(muscle, v.total).texte}</small>}
+                      {comparer && <small className={`delta ${variationMuscle(avant.parMuscle, muscle, v.total).classe}`}>{variationMuscle(avant.parMuscle, muscle, v.total).texte}</small>}
                     </b>
                   </summary>
                   <ul>

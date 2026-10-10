@@ -13,10 +13,10 @@ type Formulaire = { id?: string; nom: string; groupe: string; materiel: string; 
 const vide = (): Formulaire => ({ nom: '', groupe: GROUPES[0], materiel: MATERIELS[0], notes: '', video_url: '', muscles: [] })
 const lienSur = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null) // refuse javascript:, etc.
 
-export default function Bibliotheque() {
+export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInitiale?: string }) {
   const [liste, setListe] = useState<Reference[]>([])
   const [groupe, setGroupe] = useState('')
-  const [recherche, setRecherche] = useState('')
+  const [recherche, setRecherche] = useState(rechercheInitiale)
   const [form, setForm] = useState<Formulaire | null>(null)
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
