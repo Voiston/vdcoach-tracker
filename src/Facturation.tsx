@@ -75,6 +75,11 @@ export default function Facturation({ onOuvrir }: { onOuvrir: (clientId: string)
     URL.revokeObjectURL(url)
   }
 
+  // Répartition de toutes les séances du mois par format (une séance partagée = une séance)
+  const parFormat = new Map<number, number>()
+  for (const s of seances) parFormat.set(s.participants.length, (parFormat.get(s.participants.length) ?? 0) + 1)
+  const repartition = [...parFormat.entries()].sort((a, b) => a[0] - b[0]).map(([n, c]) => `${c} ${libelleFormat(n)}`).join(' · ')
+
   return (
     <section>
       <h2>Facturation</h2>
@@ -94,10 +99,11 @@ export default function Facturation({ onOuvrir }: { onOuvrir: (clientId: string)
             <>
               <div className="stats">
                 <div><strong>{seances.length}</strong><span>séances réalisées</span></div>
-                <div><strong>{entites.length}</strong><span>à facturer</span></div>
+                <div><strong>{entites.length}</strong><span>factures à émettre</span></div>
                 <div><strong>{partagees}</strong><span>séances partagées</span></div>
               </div>
 
+              {repartition && <p className="meta">Sur le mois : {repartition}</p>}
               <ul className="liste facturation">
                 {entites.map(e => (
                   <li key={e.cle}>
@@ -108,6 +114,7 @@ export default function Facturation({ onOuvrir }: { onOuvrir: (clientId: string)
                           <span className="meta">{detailFormats(e)}</span>
                         </span>
                         <b className="fact-total">{e.seances.length}<small> séance{e.seances.length > 1 ? 's' : ''}</small></b>
+                        <span className="chevron" aria-hidden="true">›</span>
                       </summary>
                       <ul className="fact-detail">
                         {e.seances.map(s => (
@@ -125,8 +132,10 @@ export default function Facturation({ onOuvrir }: { onOuvrir: (clientId: string)
                   </li>
                 ))}
               </ul>
-              <p className="meta">Une séance partagée (couple, trio) compte pour une seule séance. Le format vient du nombre de personnes présentes.</p>
-              <button type="button" className="secondaire" onClick={exporter}>Exporter le mois (CSV)</button>
+              <div className="pied-facturation">
+                <p className="meta">Une séance partagée (couple, trio) compte pour une seule séance. Le format vient du nombre de personnes présentes.</p>
+                <button type="button" className="secondaire" onClick={exporter}>Exporter le mois (CSV)</button>
+              </div>
             </>
           )}
         </>

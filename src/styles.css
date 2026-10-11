@@ -176,7 +176,7 @@ legend { padding: 0; margin-bottom: .4rem; font-size: .875rem; font-weight: 700;
   main > section { max-width: 52rem; margin-inline: auto; }
 
   /* Clients : liste à gauche (fixe), profil à droite */
-  .maitre-detail { display: grid; grid-template-columns: 20rem minmax(0, 1fr); gap: 0; align-items: start; }
+  .maitre-detail { display: grid; grid-template-columns: 22rem minmax(0, 1fr); gap: 0; align-items: start; }
   .maitre-detail > :not(:first-child) { padding-left: 2.25rem; min-width: 0; }
   .maitre-detail > :first-child { position: sticky; top: 6rem; height: calc(100dvh - 7.5rem); overflow-y: auto; padding-right: 1.5rem; border-right: 1px solid var(--trait); }
   .retour.vers-liste { display: none; }
@@ -346,3 +346,22 @@ kbd { padding: .1rem .4rem; font: inherit; font-size: .75rem; color: var(--discr
 .puce-choix.actif { color: var(--accent-fonce); background: var(--accent-doux); border-color: var(--accent); }
 input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 0; padding: 0; accent-color: var(--accent); }
 .case { display: flex; align-items: center; gap: .6rem; font-weight: 500; }
+
+/* Corrections : ces règles doivent venir APRÈS les règles de base qu'elles remplacent */
+@media (min-width: 960px) {
+  .entete-seance { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .entete-seance > :first-child { grid-column: auto; }
+  .compteurs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .compteurs .compteur:last-child { grid-column: auto; }
+  .barre-enregistrement { bottom: 1rem; }
+  /* Dans la liste de gauche, le raccourci « nouvelle séance » devient un « + » rond pour laisser la place aux noms */
+  .maitre-detail .action-seance { width: 2.5rem; min-height: 2.5rem; padding: 0; font-size: 1.4rem; line-height: 1; border-radius: 50%; color: var(--accent-fonce); background: var(--accent-doux); }
+  .maitre-detail .action-seance .texte-action { display: none; }
+}
+.liste li > .ligne-client { justify-content: flex-start; }
+
+/* Facturation */
+.chevron { flex: none; font-size: 1.5rem; line-height: 1; color: var(--discret); transition: transform .15s; }
+.facturation details[open] .chevron { transform: rotate(90deg); }
+.facturation summary:hover .fact-nom strong { color: var(--accent-fonce); }
+.pied-facturation { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; margin-top: 1rem; }

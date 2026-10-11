@@ -3,8 +3,9 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import { FormulaireClient, type Client } from './Clients'
+import { libelleFormat, regrouperSeances } from './facturation-lib'
 
-type Resume = { id: string; client_id: string; date_seance: string }
+type Resume = { id: string; client_id: string; date_seance: string; session_id: string | null }
 
 const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 function ilYa(d: string) {
@@ -29,7 +30,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
   async function charger() {
     const [c, s] = await Promise.all([
       supabase.from('clients').select('*').order('prenom'),
-      supabase.from('seances').select('id, client_id, date_seance').order('date_seance', { ascending: false }).order('created_at', { ascending: false }).limit(1000),
+      supabase.from('seances').select('id, client_id, date_seance, session_id').order('date_seance', { ascending: false }).order('created_at', { ascending: false }).limit(1000),
     ])
     setPret(true)
     const err = c.error ?? s.error
@@ -49,6 +50,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
   const ceMois: Record<string, number> = {}
   for (const s of seances) if (s.date_seance >= debutMois) ceMois[s.client_id] = (ceMois[s.client_id] ?? 0) + 1
   const par = Object.fromEntries(clients.map(c => [c.id, c]))
+  const recentes = [...regrouperSeances(seances)].reverse().slice(0, 5) // une séance partagée = une ligne
   const filtre = recherche.trim().toLowerCase()
   const correspond = (c: Client) => `${c.prenom} ${c.nom ?? ''}`.toLowerCase().includes(filtre)
   const actifs = clients.filter(c => c.actif && correspond(c))
@@ -60,10 +62,11 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
         <Avatar client={c} />
         <span className="ligne-texte">
           <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
-          <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}{ceMois[c.id] ? ` · ${ceMois[c.id]} ce mois-ci` : ''}</span>
+          <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
+          {ceMois[c.id] > 0 && <span className="meta">{ceMois[c.id]} séance{ceMois[c.id] > 1 ? 's' : ''} ce mois-ci</span>}
         </span>
       </button>
-      {c.actif && c.id !== actifId && <button type="button" className="lien" onClick={() => onNouvelleSeance(c.id)}>+ Séance</button>}
+      {c.actif && c.id !== actifId && <button type="button" className="lien action-seance" onClick={() => onNouvelleSeance(c.id)} aria-label={`Nouvelle séance pour ${c.prenom}`} title="Nouvelle séance"><span aria-hidden="true">+</span><span className="texte-action"> Séance</span></button>}
     </li>
   )
 
@@ -95,17 +98,20 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
             <div className="activite">
               <h3>Activité récente</h3>
               <ul className="liste">
-                {seances.slice(0, 5).map(s => (
-                  <li key={s.id}>
-                    <button type="button" className="ligne-client" onClick={() => onOuvrir(s.client_id)}>
-                      {par[s.client_id] && <Avatar client={par[s.client_id]} />}
-                      <span className="ligne-texte">
-                        <strong>{par[s.client_id]?.prenom ?? 'Client'} {par[s.client_id]?.nom ?? ''}</strong>
-                        <span className="meta">{dateFr(s.date_seance)}</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                {recentes.map(s => {
+                  const presents = s.participants.map(id => par[id]).filter(Boolean)
+                  return (
+                    <li key={s.cle}>
+                      <button type="button" className="ligne-client" onClick={() => onOuvrir(s.participants[0])}>
+                        {presents[0] && <Avatar client={presents[0]} />}
+                        <span className="ligne-texte">
+                          <strong>{presents.map(c => `${c.prenom} ${c.nom ?? ''}`.trim()).join(' & ') || 'Client'}</strong>
+                          <span className="meta">{dateFr(s.date)}{s.participants.length > 1 ? ` · ${libelleFormat(s.participants.length)}` : ''}</span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

@@ -1,8 +1,8 @@
 import { supabase } from './supabase'
 
 export type ClientFact = { id: string; prenom: string; nom: string | null; actif: boolean; groupe_facturation: string | null }
-export type LigneSeance = { id: string; client_id: string; date_seance: string; session_id: string | null }
-export type SeanceReelle = { cle: string; date: string; participants: string[] } // participants : identifiants de clients
+export type LigneSeance = { id: string; client_id: string; date_seance: string; session_id: string | null; duree_min?: number | null }
+export type SeanceReelle = { cle: string; date: string; participants: string[]; duree?: number | null } // participants : identifiants de clients
 export type Entite = { cle: string; nom: string; membres: ClientFact[]; seances: SeanceReelle[] }
 
 export const libelleFormat = (n: number) => (n === 1 ? 'solo' : n === 2 ? 'duo' : n === 3 ? 'trio' : `groupe de ${n}`)
@@ -26,7 +26,7 @@ export function regrouperSeances(lignes: LigneSeance[]): SeanceReelle[] {
   const par = new Map<string, SeanceReelle>()
   for (const l of lignes) {
     const cle = l.session_id ?? l.id
-    const s = par.get(cle) ?? { cle, date: l.date_seance, participants: [] }
+    const s = par.get(cle) ?? { cle, date: l.date_seance, participants: [], duree: l.duree_min ?? null }
     if (!s.participants.includes(l.client_id)) s.participants.push(l.client_id)
     par.set(cle, s)
   }
