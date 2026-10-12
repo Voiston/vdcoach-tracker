@@ -6,3 +6,7 @@ dist
 vdcoach-sauvegarde-*.json
 vdcoach-seances-*.csv
 facturation-*.csv
+*.csv
+*sauvegarde*.json
+*backup*.json
+*export*.json
