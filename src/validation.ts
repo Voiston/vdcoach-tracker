@@ -18,5 +18,6 @@ export const REGLES = {
   series: { min: 1, max: 30, entier: true },
   repetitions: { min: 1, max: 300, entier: true },
   charge: { min: 0, max: 1000 },
+  distance: { min: 0, max: 1000 },
   mesure: { min: 0, max: 500 },
 }

@@ -8,26 +8,27 @@ import { Champ, Compteur, ErreurChargement, EtatVide, FeuilleSaisie, MessageErre
 import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
 import type { Client } from './Clients'
 
-type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string }
-type Exo = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }
+// duree_min et distance_km ne servent qu'aux exercices du groupe « Cardio » ; series, repetitions et charge_kg aux autres
+type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string; duree_min: string; distance_km: string }
+type Exo = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
 
-const vide = (): Ligne => ({ nom: '', series: '', repetitions: '', charge_kg: '' })
+const vide = (): Ligne => ({ nom: '', series: '', repetitions: '', charge_kg: '', duree_min: '', distance_km: '' })
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
 const txt = (n: number | null) => (n === null ? '' : String(n))
 const versLignes = (exos: Exo[]): Ligne[] =>
   exos.length
     ? [...exos]
         .sort((a, b) => a.ordre - b.ordre)
-        .map(x => ({ nom: x.nom, series: txt(x.series), repetitions: txt(x.repetitions), charge_kg: txt(x.charge_kg) }))
+        .map(x => ({ nom: x.nom, series: txt(x.series), repetitions: txt(x.repetitions), charge_kg: txt(x.charge_kg), duree_min: txt(x.duree_min), distance_km: txt(x.distance_km) }))
     : [vide()]
 
-const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg)'
+const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)'
 
 // Règle de progression simple (double progression) : à modifier selon ta façon de coacher.
 const PLAFOND_REPS = 12 // à partir de ce nombre de répétitions, on suggère d'augmenter la charge
 const PAS_KG = 2.5 // augmentation de charge suggérée
 
-type Dernier = { date: string; series: number | null; repetitions: number | null; charge_kg: number | null }
+type Dernier = { date: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
 const cle = (nom: string) => nom.trim().toLowerCase()
 const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&') // pour ilike
 
@@ -44,11 +45,16 @@ function proposition(d: Dernier) {
   return { repetitions: d.repetitions + 1, charge_kg: d.charge_kg }
 }
 
-function DerniereFois({ d }: { d: Dernier }) {
+const resumeCardio = (x: { duree_min: number | null; distance_km: number | null }) =>
+  [x.duree_min !== null ? `${x.duree_min} min` : '', x.distance_km !== null ? `${x.distance_km} km` : ''].filter(Boolean).join(' · ')
+
+function DerniereFois({ d, cardio }: { d: Dernier; cardio: boolean }) {
+  const date = new Date(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  if (cardio) return <p className="meta">Dernière fois ({date}) : {resumeCardio(d) || '?'}</p>
   const conseil = suggestion(d)
   return (
     <p className="meta">
-      Dernière fois ({new Date(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
+      Dernière fois ({date}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
       {d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}
       {conseil ? ` · ${conseil}` : ''}
     </p>
@@ -94,6 +100,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
 
+  // Un exercice du groupe « Cardio » de la bibliothèque se saisit en durée et distance
+  const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
+  // Valeurs à enregistrer pour une ligne : le cardio ne garde que durée et distance, les autres que séries, répétitions et charge
+  const valeurs = (l: Ligne) =>
+    estCardio(l.nom)
+      ? { series: null, repetitions: null, charge_kg: null, duree_min: num(l.duree_min), distance_km: num(l.distance_km) }
+      : { series: num(l.series), repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_min: null, distance_km: null }
+
   useEffect(() => {
     if (seanceId) return
     supabase.from('clients').select('id, prenom, nom, groupe_facturation').eq('actif', true).neq('id', clientId).order('prenom').then(({ data }) => setAutres(data ?? []))
@@ -132,7 +146,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!id) return
     const { data, error } = await supabase
       .from('modeles')
-      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg)')
+      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)')
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
@@ -151,9 +165,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         modele_id: data.id,
         ordre: i,
         nom: l.nom.trim(),
-        series: num(l.series),
-        repetitions: num(l.repetitions),
-        charge_kg: num(l.charge_kg),
+        ...valeurs(l),
       })),
     )
     if (erreurExos) {
@@ -176,7 +188,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!clientId) return
     supabase
       .from('seances')
-      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg)')
+      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg, duree_min, distance_km)')
       .eq('client_id', clientId)
       .lte('date_seance', date)
       .order('date_seance', { ascending: false })
@@ -188,7 +200,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           if (s.id === seanceId) continue
           for (const x of s.exercices as any[]) {
             const k = cle(x.nom)
-            if (!m[k]) m[k] = { date: s.date_seance, series: x.series, repetitions: x.repetitions, charge_kg: x.charge_kg }
+            if (!m[k]) m[k] = { date: s.date_seance, series: x.series, repetitions: x.repetitions, charge_kg: x.charge_kg, duree_min: x.duree_min, distance_km: x.distance_km }
           }
         }
         setDerniers(m)
@@ -200,7 +212,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const records: string[] = []
     const vus = new Set<string>()
     for (const l of lignes) {
-      const charge = num(l.charge_kg)
+      const charge = valeurs(l).charge_kg
       const k = cle(l.nom)
       if (!k || charge === null || vus.has(k)) continue
       vus.add(k)
@@ -233,7 +245,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setDuree(brouillon.duree)
     setRessenti(brouillon.ressenti)
     setNotes(brouillon.notes)
-    setLignes(brouillon.lignes.length ? brouillon.lignes : [vide()])
+    setLignes(brouillon.lignes.length ? brouillon.lignes.map(l => ({ ...vide(), ...l })) : [vide()]) // les brouillons anciens n'ont pas les champs cardio
     setBrouillon(null)
   }
 
@@ -269,7 +281,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   function copierDerniere(i: number) {
     const d = derniers[cle(lignes[i].nom)]
     if (!d) return
-    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(d.repetitions), charge_kg: txt(d.charge_kg) } : x)))
+    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(d.repetitions), charge_kg: txt(d.charge_kg), duree_min: txt(d.duree_min), distance_km: txt(d.distance_km) } : x)))
   }
 
   function progresser(i: number) {
@@ -306,14 +318,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const prenomDe = (id: string) => autres.find(c => c.id === id)?.prenom ?? 'client'
 
   // Enregistre la même séance pour chaque participant (mêmes exercices ; les charges seulement si on le demande)
-  async function creerSeancesPartagees(sessionId: string, exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }[]): Promise<string[]> {
+  async function creerSeancesPartagees(sessionId: string, exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }[]): Promise<string[]> {
     const echec = invites.map(prenomDe)
     const { data, error } = await supabase
       .from('seances')
       .insert(invites.map(cid => ({ client_id: cid, date_seance: date, duree_min: num(duree), session_id: sessionId })))
       .select('id, client_id')
     if (error || !data) return echec
-    const lignesExos = data.flatMap(s => exos.map(x => ({ seance_id: s.id, ordre: x.ordre, nom: x.nom, series: x.series, repetitions: x.repetitions, charge_kg: copierCharges ? x.charge_kg : null })))
+    const lignesExos = data.flatMap(s => exos.map(x => ({ seance_id: s.id, ordre: x.ordre, nom: x.nom, series: x.series, repetitions: x.repetitions, charge_kg: copierCharges ? x.charge_kg : null, duree_min: x.duree_min, distance_km: x.distance_km })))
     if (lignesExos.length) {
       const { error: erreurExos } = await supabase.from('exercices').insert(lignesExos)
       if (erreurExos) {
@@ -348,9 +360,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         seance_id: id,
         ordre: i,
         nom: l.nom.trim(),
-        series: num(l.series),
-        repetitions: num(l.repetitions),
-        charge_kg: num(l.charge_kg),
+        ...valeurs(l),
       }))
     // On ajoute les nouveaux exercices AVANT de supprimer les anciens : en cas d'erreur, rien n'est perdu.
     if (exercices.length) {
@@ -387,7 +397,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const faits = new Set(Object.keys(derniers).map(normaliser))
   const saisis = lignes.filter(l => l.nom.trim())
   const nbSeries = saisis.reduce((total, l) => {
-    const n = num(l.series)
+    const n = valeurs(l).series
     return total + (n && !Number.isNaN(n) ? n : 0)
   }, 0)
   // Partenaires proposés d'emblée : les clients du même groupe de facturation
@@ -395,7 +405,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const puces = [...partenaires, ...invites.filter(id => !partenaires.some(p => p.id === id)).map(id => autres.find(c => c.id === id)).filter(Boolean) as typeof autres]
   const basculerInvite = (id: string) => setInvites(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
   const invalide = verifier(duree, REGLES.duree) || verifier(ressenti, REGLES.ressenti)
-    || lignes.some(l => verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
+    || lignes.some(l => estCardio(l.nom)
+      ? verifier(l.duree_min, REGLES.duree) || verifier(l.distance_km, REGLES.distance)
+      : verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge))
 
   return (
     <>
@@ -461,6 +473,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       )}
       {lignes.map((l, i) => {
         const dernier = derniers[cle(l.nom)]
+        const cardio = estCardio(l.nom)
         const prop = dernier ? proposition(dernier) : null
         return (
           <div className="exercice" key={i}>
@@ -477,18 +490,25 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
             </div>
             {dernier && (
               <>
-                <DerniereFois d={dernier} />
+                <DerniereFois d={dernier} cardio={cardio} />
                 <div className="exercice-actions">
                   <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Comme la dernière fois</button>
-                  {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
+                  {prop && !cardio && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
                 </div>
               </>
             )}
-            <div className="compteurs">
-              <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
-              <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
-              <Compteur libelle="Charge (kg)" valeur={l.charge_kg} onChange={v => maj(i, 'charge_kg', v)} pas={PAS_KG} depart={dernier?.charge_kg ?? PAS_KG} decimal erreur={verifier(l.charge_kg, REGLES.charge)} />
-            </div>
+            {cardio ? (
+              <div className="compteurs deux">
+                <Compteur libelle="Durée (min)" valeur={l.duree_min} onChange={v => maj(i, 'duree_min', v)} pas={5} depart={dernier?.duree_min ?? 20} erreur={verifier(l.duree_min, REGLES.duree)} />
+                <Compteur libelle="Distance (km)" valeur={l.distance_km} onChange={v => maj(i, 'distance_km', v)} pas={0.5} depart={dernier?.distance_km ?? 1} decimal erreur={verifier(l.distance_km, REGLES.distance)} />
+              </div>
+            ) : (
+              <div className="compteurs">
+                <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
+                <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
+                <Compteur libelle="Charge (kg)" valeur={l.charge_kg} onChange={v => maj(i, 'charge_kg', v)} pas={PAS_KG} depart={dernier?.charge_kg ?? PAS_KG} decimal erreur={verifier(l.charge_kg, REGLES.charge)} />
+              </div>
+            )}
             {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
           </div>
         )

@@ -3,11 +3,13 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
 
-type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null }
+type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
 type Seance = { id: string; date_seance: string; duree_min: number | null; ressenti: number | null; notes: string | null; exercices: Exercice[] }
 
 const TAILLE = 20
 const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+const resumeCardio = (x: { duree_min: number | null; distance_km: number | null }) =>
+  [x.duree_min !== null ? `${x.duree_min} min` : '', x.distance_km !== null ? `${x.distance_km} km` : ''].filter(Boolean).join(' · ')
 
 export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) => void; onNouvelle: () => void }) {
   const client = useClient()
@@ -25,7 +27,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     if (depuis === 0) setPret(false)
     const { data, error } = await supabase
       .from('seances')
-      .select('id, date_seance, duree_min, ressenti, notes, exercices(id, ordre, nom, series, repetitions, charge_kg)')
+      .select('id, date_seance, duree_min, ressenti, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)')
       .eq('client_id', client.id)
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
@@ -79,6 +81,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
                   {x.nom}
                   {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
                   {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
+                  {resumeCardio(x) ? ` — ${resumeCardio(x)}` : ''}
                 </p>
               ))}
               {s.notes && <p className="meta">{s.notes}</p>}

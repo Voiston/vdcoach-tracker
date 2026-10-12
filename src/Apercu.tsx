@@ -7,7 +7,7 @@ import type { Rubrique } from './Profil'
 import JaugeObjectif from './JaugeObjectif'
 import Mannequin from './Mannequin'
 import { chargerObjectifs, etatObjectif, valeurActuelle, type DonneesObjectifs } from './objectifs-lib'
-import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle } from './muscles-lib'
+import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle, type Volume } from './muscles-lib'
 
 type Derniere = { id: string; date_seance: string; duree_min: number | null; exercices: { nom: string; ordre: number }[] }
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -27,7 +27,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const [dernieres, setDernieres] = useState<Derniere[]>([])
   const [donnees, setDonnees] = useState<DonneesObjectifs | null>(null)
   const [muscles, setMuscles] = useState<{ muscle: string; total: number; variation: { texte: string; classe: string } | null }[]>([])
-  const [volumes, setVolumes] = useState<Record<string, number>>({}) // séries pondérées de tous les muscles (30 jours), pour le mannequin
+  const [parMuscle, setParMuscle] = useState<Record<string, Volume>>({}) // tous les muscles sur 30 jours, pour le mannequin
   const [evolution, setEvolution] = useState<string | null>(null) // évolution du volume total vs les 30 jours précédents
 
   async function charger() {
@@ -54,7 +54,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     const avant = calculerMuscles(p30.seances ?? [], b.biblio ?? null)
     const comparer = avant.seriesTotal > 0 // sans séance sur la période précédente, il n'y a rien à comparer
     setEvolution(comparer ? libelleEvolution(evolutionPct(courante.seriesTotal, avant.seriesTotal)) : null)
-    setVolumes(Object.fromEntries(Object.entries(courante.parMuscle).map(([muscle, v]) => [muscle, v.total])))
+    setParMuscle(courante.parMuscle)
     setMuscles(
       Object.entries(courante.parMuscle)
         .sort((x, y) => y[1].total - x[1].total)
@@ -133,7 +133,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           ) : (
             <p className="meta">Aucune série comptée sur les 30 derniers jours.</p>
           )}
-          {muscles.length > 0 && <Mannequin volumes={volumes} />}
+          {muscles.length > 0 && <Mannequin parMuscle={parMuscle} />}
           <button type="button" className="lien" onClick={() => onRubrique('suivi')}>Voir le détail →</button>
 
             </div>

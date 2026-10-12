@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { messageErreur } from './erreurs'
 import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
+import Mannequin from './Mannequin'
 import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle, type Reference, type SeanceExo } from './muscles-lib'
 
 const PERIODES = [7, 30, 90]
@@ -81,6 +82,8 @@ export default function Muscles() {
               Le plus travaillé : <strong>{MUSCLES[classement[0][0]] ?? classement[0][0]}</strong> ({fr(classement[0][1].total)} séries pondérées)
             </p>
           )}
+
+          <Mannequin parMuscle={parMuscle} />
 
           <ul className="muscles">
             {classement.map(([muscle, v]) => (

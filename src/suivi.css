@@ -40,6 +40,12 @@
 .mannequin .muscle { fill: var(--trait); stroke: var(--surface); stroke-width: 1; stroke-linejoin: round; cursor: pointer; }
 .mannequin .muscle.travaille { fill: var(--accent); }
 .mannequin .muscle.choisi { stroke: var(--encre); stroke-width: 1.5; }
+.apports { list-style: none; margin: .25rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; color: var(--discret); font-size: .9rem; }
+
+/* Cardio dans la saisie de séance : durée et distance, l'une sous l'autre sur téléphone */
+.compteurs.deux { grid-template-columns: 1fr; }
+.compteurs.deux .compteur:last-child { grid-column: auto; }
+@media (min-width: 960px) { .compteurs.deux { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }

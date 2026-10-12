@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { MUSCLES } from './definitions'
+import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
+import type { Volume } from './muscles-lib'
 
 const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
+const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${fr(c)}`
 
 type Partie = [muscle: string, d: string]
 
@@ -44,6 +46,13 @@ const DOS: Partie[] = [
   ['mollets', MOLLETS],
 ]
 
+// Équilibres suivis : deux familles de muscles comparées sur les séries pondérées
+const EQUILIBRES = [
+  { a: { nom: 'Poussée', muscles: ['pectoraux', 'delto_ant', 'triceps'] }, b: { nom: 'Tirage', muscles: ['grand_dorsal', 'haut_dos', 'biceps'] } },
+  { a: { nom: 'Quadriceps', muscles: ['quadriceps'] }, b: { nom: 'Ischio-jambiers', muscles: ['ischios'] } },
+]
+const SEUIL_EQUILIBRE = 90 // à partir de ce pourcentage, on parle d'équilibre
+
 function Vue({ legende, parties, volumes, maxi, choisi, onChoisir }: {
   legende: string
   parties: Partie[]
@@ -83,12 +92,27 @@ function Vue({ legende, parties, volumes, maxi, choisi, onChoisir }: {
 
 /**
  * Mannequin vue de face et de dos : plus un muscle est sollicité, plus il est coloré.
- * « volumes » : séries pondérées par muscle (clés de MUSCLES). On touche un muscle pour lire sa valeur.
+ * « parMuscle » : résultat de calculerMuscles (séries pondérées et exercices par muscle).
+ * On touche un muscle pour lire sa valeur et voir les exercices qui y contribuent.
+ * Dessous : équilibre poussée / tirage et quadriceps / ischio-jambiers.
  */
-export default function Mannequin({ volumes }: { volumes: Record<string, number> }) {
+export default function Mannequin({ parMuscle }: { parMuscle: Record<string, Volume> }) {
   const [choisi, setChoisi] = useState<string | null>(null)
+  const volumes = Object.fromEntries(Object.entries(parMuscle).map(([muscle, v]) => [muscle, v.total]))
   const maxi = Math.max(0, ...Object.values(volumes))
   const choisir = (muscle: string) => setChoisi(c => (c === muscle ? null : muscle))
+  // Phrase par équilibre : on part de la famille la moins travaillée, en pourcentage de l'autre
+  const total = (muscles: string[]) => muscles.reduce((t, m) => t + (parMuscle[m]?.total ?? 0), 0)
+  const equilibres = EQUILIBRES.flatMap(({ a, b }) => {
+    const va = total(a.muscles)
+    const vb = total(b.muscles)
+    if (va === 0 && vb === 0) return []
+    const [faible, fort] = va <= vb ? [{ ...a, v: va }, { ...b, v: vb }] : [{ ...b, v: vb }, { ...a, v: va }]
+    if (faible.v === 0) return [`${faible.nom} : aucun volume sur la période`]
+    const pct = Math.round((faible.v / fort.v) * 100)
+    return [pct >= SEUIL_EQUILIBRE ? `${a.nom} et ${b.nom.toLowerCase()} équilibrés` : `${faible.nom} : ${pct} % du volume de ${fort.nom.toLowerCase()}`]
+  })
+  const apports = choisi ? [...(parMuscle[choisi]?.apports ?? [])].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient) : []
 
   return (
     <div>
@@ -101,6 +125,24 @@ export default function Mannequin({ volumes }: { volumes: Record<string, number>
           ? <><strong>{MUSCLES[choisi]}</strong> · {volumes[choisi] ? `${fr(volumes[choisi])} séries pondérées` : 'non travaillé sur la période'}</>
           : 'Touche un muscle pour voir sa valeur.'}
       </p>
+      {apports.length > 0 && (
+        <ul className="apports">
+          {apports.map(a => (
+            <li key={a.exercice}>
+              {a.exercice} : {a.series} série(s) · <span className={`puce ${niveauDe(a.coefficient)}`}>{libelleNiveau(a.coefficient)}</span> → {fr(a.series * a.coefficient)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {equilibres.length > 0 && (
+        <>
+          <h4 className="sous-titre">Équilibre musculaire</h4>
+          <ul className="apports">
+            {equilibres.map(t => <li key={t}>{t}</li>)}
+          </ul>
+          <p className="meta">Séries pondérées. Poussée : pectoraux, deltoïdes antérieurs, triceps. Tirage : grand dorsal, haut du dos, biceps.</p>
+        </>
+      )}
     </div>
   )
 }

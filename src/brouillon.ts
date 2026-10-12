@@ -8,7 +8,8 @@ export type Brouillon = {
   duree: string
   ressenti: string
   notes: string
-  lignes: { nom: string; series: string; repetitions: string; charge_kg: string }[]
+  // duree_min et distance_km (cardio) sont facultatifs : absents des brouillons enregistrés avant leur ajout
+  lignes: { nom: string; series: string; repetitions: string; charge_kg: string; duree_min?: string; distance_km?: string }[]
   enregistreLe: string
 }
 

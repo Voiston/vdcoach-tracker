@@ -10,7 +10,7 @@ import Courbe, { type Point } from './Courbe'
 const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
 
 type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
-type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null; charge_kg: number | null; repetitions: number | null }[] }
+type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null; charge_kg: number | null; repetitions: number | null; duree_min: number | null; distance_km: number | null }[] }
 
 // Marque les points qui battent tous les précédents (le premier point n'est pas un record)
 function marquerRecords(points: Point[]): Point[] {
@@ -23,6 +23,18 @@ function marquerRecords(points: Point[]): Point[] {
 }
 
 const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
+
+// Lundi de la semaine d'une date (AAAA-MM-JJ), et lundi suivant : pour cumuler le cardio par semaine
+function lundi(d: string) {
+  const x = new Date(`${d}T12:00:00`)
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7))
+  return x.toLocaleDateString('sv-SE')
+}
+function semaineSuivante(d: string) {
+  const x = new Date(`${d}T12:00:00`)
+  x.setDate(x.getDate() + 7)
+  return x.toLocaleDateString('sv-SE')
+}
 
 function ilYa(d: string) {
   const jours = Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
@@ -49,7 +61,7 @@ export default function Suivi() {
     if (!clientId) return
     const [m, s, o] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
-      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions)').eq('client_id', clientId).order('date_seance'),
+      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions, duree_min, distance_km)').eq('client_id', clientId).order('date_seance'),
       supabase.from('objectifs').select('source, reference, valeur_cible').eq('client_id', clientId).order('created_at'),
     ])
     setPret(true)
@@ -111,6 +123,21 @@ export default function Suivi() {
   const cibleMesure = cibleDe('mesure', r => r === type)
   const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
   const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
+
+  // Cardio : minutes cumulées par semaine (une semaine sans cardio entre deux semaines actives compte pour 0)
+  const parSemaine = new Map<string, number>()
+  for (const s of seances)
+    for (const x of s.exercices)
+      if (x.duree_min !== null) parSemaine.set(lundi(s.date_seance), (parSemaine.get(lundi(s.date_seance)) ?? 0) + Number(x.duree_min))
+  const semainesCardio = [...parSemaine.keys()].sort()
+  const pointsCardio: Point[] = []
+  if (semainesCardio.length)
+    for (let d = semainesCardio[0]; d <= semainesCardio[semainesCardio.length - 1]; d = semaineSuivante(d))
+      pointsCardio.push({ date: d, valeur: parSemaine.get(d) ?? 0 })
+  const depuis30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
+  const cardio30 = seances.filter(s => s.date_seance >= depuis30).flatMap(s => s.exercices)
+  const minutes30 = cardio30.reduce((total, x) => total + Number(x.duree_min ?? 0), 0)
+  const km30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0), 0)
 
   // 1RM estimée (formule d'Epley) pour une série donnée
   const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
@@ -180,6 +207,16 @@ export default function Suivi() {
         </ul>
       ) : (
         <p className="meta">Aucun record pour l'instant.</p>
+      )}
+
+      {pointsCardio.length > 0 && (
+        <>
+          <h3>Cardio</h3>
+          <p className="meta">
+            Sur 30 jours : {minutes30} min{km30 > 0 ? ` · ${km30.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km` : ''}. Minutes cumulées par semaine, chaque point est placé au lundi de la semaine.
+          </p>
+          <Courbe nom="Cardio" points={pointsCardio} unite="min" />
+        </>
       )}
 
       </div>

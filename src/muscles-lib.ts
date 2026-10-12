@@ -32,7 +32,7 @@ export function calculerMuscles(seances: SeanceExo[], biblio: Record<string, Ref
     for (const x of s.exercices) {
       const series = x.series ?? 1
       const ref = biblio?.[cle(x.nom)]
-      if (ref?.groupe === 'Mobilité') continue
+      if (ref?.groupe === 'Mobilité' || ref?.groupe === 'Cardio') continue // ni mobilité ni cardio : pas de séries musculaires
       seriesTotal += series
       if (!ref || !ref.exercice_muscles.length) {
         nonClasses[x.nom.trim()] = (nonClasses[x.nom.trim()] ?? 0) + series
