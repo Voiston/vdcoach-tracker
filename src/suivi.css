@@ -31,6 +31,16 @@
 .attention { padding: .6rem .85rem; margin-top: .5rem; background: var(--alerte-fond); color: var(--alerte-texte); border-radius: 14px; }
 .bandeau { padding: .85rem 1.1rem; margin-bottom: 1.1rem; background: var(--accent-doux); color: var(--accent-fonce); font-weight: 600; border-radius: 16px; cursor: pointer; }
 
+/* Mannequin (muscles vus de face et de dos) */
+.mannequin { display: flex; gap: .5rem; justify-content: center; margin-top: .75rem; padding: 1rem .5rem .5rem; background: var(--surface); border-radius: 20px; }
+.mannequin figure { flex: 1; max-width: 11rem; margin: 0; text-align: center; }
+.mannequin svg { width: 100%; height: auto; }
+.mannequin figcaption { font-size: .8125rem; color: var(--discret); }
+.mannequin .corps { fill: var(--bord); }
+.mannequin .muscle { fill: var(--trait); stroke: var(--surface); stroke-width: 1; stroke-linejoin: round; cursor: pointer; }
+.mannequin .muscle.travaille { fill: var(--accent); }
+.mannequin .muscle.choisi { stroke: var(--encre); stroke-width: 1.5; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
   button:active { transform: none; }
