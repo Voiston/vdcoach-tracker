@@ -1,3 +1,8 @@
 node_modules
 dist
 .env
+.env.*
+*.local
+vdcoach-sauvegarde-*.json
+vdcoach-seances-*.csv
+facturation-*.csv
