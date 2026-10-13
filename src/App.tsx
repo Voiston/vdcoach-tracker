@@ -1,19 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { deconnexionVolontaire } from './deconnexion'
 import { MSG_SESSION, messageErreur } from './erreurs'
 import Accueil from './Accueil'
-import Profil, { type Rubrique } from './Profil'
-import Bibliotheque from './Bibliotheque'
-import Modeles from './Modeles'
-import Reglages from './Reglages'
+import type { Rubrique } from './Profil'
 import Icone from './icones'
-import { BandeauReseau, Champ, EcranChargement, NavigationCtx, useEcranLarge } from './ui'
-import TableauDeBord from './TableauDeBord'
-import Facturation from './Facturation'
-import Palette from './Palette'
+import { BandeauReseau, Champ, EcranChargement, NavigationCtx, Squelette, useEcranLarge } from './ui'
 import { Verification2FA } from './Auth2FA'
+
+// Chargement à la demande (Code Splitting) pour alléger le bundle initial
+const Profil = lazy(() => import('./Profil'))
+const Bibliotheque = lazy(() => import('./Bibliotheque'))
+const Modeles = lazy(() => import('./Modeles'))
+const Reglages = lazy(() => import('./Reglages'))
+const TableauDeBord = lazy(() => import('./TableauDeBord'))
+const Facturation = lazy(() => import('./Facturation'))
+const Palette = lazy(() => import('./Palette'))
 
 type Route =
   | { page: 'clients' }
@@ -32,9 +35,10 @@ const ONGLETS = [
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [route, setRoute] = useState<Route>({ page: 'clients' })
+  const [versionListe, setVersionListe] = useState(0)
   const [sessionExpiree, setSessionExpiree] = useState(false)
   const large = useEcranLarge()
-  const [bandeau, setBandeau] = useState('') // message affiché après l'enregistrement (ex. nouveau record)
+  const [bandeau, setBandeau] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -46,7 +50,6 @@ export default function App() {
     return () => data.subscription.unsubscribe()
   }, [])
 
-  // Double authentification : undefined = vérification en cours
   const [exige2fa, setExige2fa] = useState<boolean | undefined>(undefined)
 
   async function verifierNiveau() {
@@ -59,7 +62,6 @@ export default function App() {
     else verifierNiveau()
   }, [session])
 
-  // Recherche rapide : Ctrl + K (ou Cmd + K) depuis n'importe où
   const [palette, setPalette] = useState(false)
   useEffect(() => {
     const touche = (e: KeyboardEvent) => {
@@ -72,7 +74,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', touche)
   }, [])
 
-  // Chaque changement d'écran est inscrit dans l'historique : le bouton « retour » du téléphone remonte d'un écran
   useEffect(() => {
     const depart: Route = { page: 'clients' }
     history.replaceState(depart, '')
@@ -85,7 +86,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', retour)
   }, [])
 
-  // Après un changement d'écran, le focus passe au contenu (utile aux lecteurs d'écran et au clavier)
   const premierAffichage = useRef(true)
   useEffect(() => {
     if (premierAffichage.current) {
@@ -126,47 +126,52 @@ export default function App() {
           <BandeauReseau />
           <main tabIndex={-1}>
             {bandeau && <p className="bandeau" onClick={() => setBandeau('')}>{bandeau}</p>}
-            {(route.page === 'clients' || route.page === 'client') && (
-              // Sur grand écran : la liste des clients reste affichée à gauche, le profil s'ouvre à droite
-              <div className={large ? 'maitre-detail' : undefined}>
-                {(large || route.page === 'clients') && (
-                  <Accueil
-                    actifId={route.page === 'client' ? route.clientId : undefined}
-                    rechargerQuand={JSON.stringify(route)}
-                    onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
-                    onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
-                  />
-                )}
-                {route.page === 'client' && (
-                  <Profil
-                    key={route.clientId}
-                    clientId={route.clientId}
-                    rubrique={route.rubrique}
-                    seanceId={route.seanceId ?? null}
-                    onRubrique={(rubrique, seanceId = null) => naviguer({ page: 'client', clientId: route.clientId, rubrique, seanceId })}
-                    onRetour={() => naviguer({ page: 'clients' })}
-                    onSaved={m => {
-                      naviguer({ page: 'client', clientId: route.clientId, rubrique: 'seances' })
-                      setBandeau(m ?? '')
-                    }}
-                  />
-                )}
-                {large && route.page === 'clients' && (
-                  <TableauDeBord
-                    onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
-                    onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
-                  />
-                )}
-              </div>
-            )}
-            {route.page === 'exercices' && (
-              <div className="page-exercices">
-                <Bibliotheque key={route.recherche ?? ''} rechercheInitiale={route.recherche} />
-                <Modeles />
-              </div>
-            )}
-            {route.page === 'facturation' && <Facturation onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })} />}
-            {route.page === 'reglages' && <Reglages />}
+            <Suspense fallback={<Squelette lignes={4} />}>
+              {(route.page === 'clients' || route.page === 'client') && (
+                <div className={large ? 'maitre-detail' : undefined}>
+                  {(large || route.page === 'clients') && (
+                    <Accueil
+                      actifId={route.page === 'client' ? route.clientId : undefined}
+                      rechargerQuand={`${route.page}-${versionListe}`}
+                      onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+                      onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+                    />
+                  )}
+                  {route.page === 'client' && (
+                    <Profil
+                      key={route.clientId}
+                      clientId={route.clientId}
+                      rubrique={route.rubrique}
+                      seanceId={route.seanceId ?? null}
+                      onRubrique={(rubrique, seanceId = null) => naviguer({ page: 'client', clientId: route.clientId, rubrique, seanceId })}
+                      onRetour={() => {
+                        setVersionListe(v => v + 1)
+                        naviguer({ page: 'clients' })
+                      }}
+                      onSaved={m => {
+                        setVersionListe(v => v + 1)
+                        naviguer({ page: 'client', clientId: route.clientId, rubrique: 'seances' })
+                        setBandeau(m ?? '')
+                      }}
+                    />
+                  )}
+                  {large && route.page === 'clients' && (
+                    <TableauDeBord
+                      onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+                      onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+                    />
+                  )}
+                </div>
+              )}
+              {route.page === 'exercices' && (
+                <div className="page-exercices">
+                  <Bibliotheque key={route.recherche ?? ''} rechercheInitiale={route.recherche} />
+                  <Modeles />
+                </div>
+              )}
+              {route.page === 'facturation' && <Facturation onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })} />}
+              {route.page === 'reglages' && <Reglages />}
+            </Suspense>
           </main>
         </div>
         <nav aria-label="Navigation principale">
@@ -177,14 +182,18 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <Palette
-          ouvert={palette}
-          onFermer={() => setPalette(false)}
-          onClient={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
-          onSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
-          onExercice={nom => naviguer({ page: 'exercices', recherche: nom })}
-          onPage={page => naviguer({ page: page as 'clients' | 'exercices' | 'facturation' | 'reglages' })}
-        />
+        {palette && (
+          <Suspense fallback={null}>
+            <Palette
+              ouvert={palette}
+              onFermer={() => setPalette(false)}
+              onClient={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
+              onSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+              onExercice={nom => naviguer({ page: 'exercices', recherche: nom })}
+              onPage={page => naviguer({ page: page as 'clients' | 'exercices' | 'facturation' | 'reglages' })}
+            />
+          </Suspense>
+        )}
       </div>
     </NavigationCtx.Provider>
   )

@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react'
 import { messageErreur } from './erreurs'
-import { ErreurChargement, EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
+import { nb } from './format'
+import { EtatVide, MessageErreur, Squelette, useAller, useClient } from './ui'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
 import Mannequin from './Mannequin'
 import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle, type Reference, type SeanceExo } from './muscles-lib'
 
 const PERIODES = [7, 30, 90]
-const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
-const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${fr(c)}`
+const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${nb(c)}`
 
 export default function Muscles() {
   const aller = useAller()
   const clientId = useClient().id
   const [jours, setJours] = useState(30)
   const [seances, setSeances] = useState<SeanceExo[]>([])
-  const [precedent, setPrecedent] = useState<SeanceExo[]>([]) // même durée, juste avant la période affichée
+  const [precedent, setPrecedent] = useState<SeanceExo[]>([])
   const [biblio, setBiblio] = useState<Record<string, Reference> | null>(null)
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
-    chargerBibliothequeMuscles().then(({ biblio, erreur: err }) => {
+    chargerBibliothequeMuscles().then(({ biblio: b, erreur: err }) => {
       if (err) return setErreur(messageErreur(err))
-      setBiblio(biblio ?? {})
+      setBiblio(b ?? {})
     })
   }, [])
 
@@ -42,8 +42,6 @@ export default function Muscles() {
   }, [clientId, jours])
 
   const { parMuscle, nonClasses, seriesTotal } = calculerMuscles(seances, biblio)
-
-  // Comparaison avec la période précédente (masquée quand il n'y avait rien à comparer)
   const avant = calculerMuscles(precedent, biblio)
   const comparer = avant.seriesTotal > 0
 
@@ -79,34 +77,37 @@ export default function Muscles() {
           </p>
           {classement[0] && (
             <p className="muscle-top">
-              Le plus travaillé : <strong>{MUSCLES[classement[0][0]] ?? classement[0][0]}</strong> ({fr(classement[0][1].total)} séries pondérées)
+              Le plus travaillé : <strong>{MUSCLES[classement[0][0]] ?? classement[0][0]}</strong> ({nb(classement[0][1].total)} séries pondérées)
             </p>
           )}
 
           <Mannequin parMuscle={parMuscle} />
 
           <ul className="muscles">
-            {classement.map(([muscle, v]) => (
-              <li key={muscle}>
-                <details>
-                  <summary>
-                    <span>{MUSCLES[muscle] ?? muscle}</span>
-                    <div className="barre"><i style={{ width: `${(v.total / maximum) * 100}%` }} /></div>
-                    <b>
-                      {fr(v.total)}<small> séries</small>
-                      {comparer && <small className={`delta ${variationMuscle(avant.parMuscle, muscle, v.total).classe}`}>{variationMuscle(avant.parMuscle, muscle, v.total).texte}</small>}
-                    </b>
-                  </summary>
-                  <ul>
-                    {[...v.apports].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient).map(a => (
-                      <li key={a.exercice}>
-                        {a.exercice} : {a.series} série(s) · <span className={`puce ${niveauDe(a.coefficient)}`}>{libelleNiveau(a.coefficient)}</span> → {fr(a.series * a.coefficient)}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              </li>
-            ))}
+            {classement.map(([muscle, v]) => {
+              const variation = comparer ? variationMuscle(avant.parMuscle, muscle, v.total) : null
+              return (
+                <li key={muscle}>
+                  <details>
+                    <summary>
+                      <span>{MUSCLES[muscle] ?? muscle}</span>
+                      <div className="barre"><i style={{ width: `${(v.total / maximum) * 100}%` }} /></div>
+                      <b>
+                        {nb(v.total)}<small> séries</small>
+                        {variation && <small className={`delta ${variation.classe}`}>{variation.texte}</small>}
+                      </b>
+                    </summary>
+                    <ul>
+                      {[...v.apports].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient).map(a => (
+                        <li key={a.exercice}>
+                          {a.exercice} : {a.series} série(s) · <span className={`puce ${niveauDe(a.coefficient)}`}>{libelleNiveau(a.coefficient)}</span> → {nb(a.series * a.coefficient)}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
+              )
+            })}
           </ul>
           <p className="meta">Une série compte en entier pour le muscle principal, pour moitié pour un muscle secondaire, pour un quart pour un stabilisateur. Touche un muscle pour voir les exercices.</p>
 

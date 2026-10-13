@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-import type { Volume } from './muscles-lib'
+import { nb } from './format'
+import { phrasesEquilibre, type Volume } from './muscles-lib'
 
-const fr = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
-const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${fr(c)}`
+const libelleNiveau = (c: number) => NIVEAUX.find(n => n.valeur === c)?.libelle ?? `×${nb(c)}`
 
 type Partie = [muscle: string, d: string]
 
@@ -13,10 +13,9 @@ const SILHOUETTE =
   'C48 232 47 220 46 208 L55 152 L62 108 C64 128 70 140 72 152 C70 170 66 185 66 200 C64 230 66 262 69 292 ' +
   'C66 315 64 345 72 380 L70 402 L88 402 L83 380 C86 350 88 320 90 292 C94 262 97 232 100 206 Z'
 
-// Zones communes aux deux vues
 const DELTO_LAT = 'M55 70 C47 73 43 84 43 96 L44 104 L50 104 C50 92 51 80 55 70 Z'
-const DELTO = 'M55 70 L62 74 C63 84 63 94 60 102 L50 104 C50 92 51 80 55 70 Z' // avant (face) ou arrière (dos)
-const BRAS = 'M42.5 104 L61 104 C60 120 58 134 56 147 L38.5 147 Z' // biceps (face) ou triceps (dos)
+const DELTO = 'M55 70 L62 74 C63 84 63 94 60 102 L50 104 C50 92 51 80 55 70 Z'
+const BRAS = 'M42.5 104 L61 104 C60 120 58 134 56 147 L38.5 147 Z'
 const AVANT_BRAS = 'M38 152 L55 152 L46 207 L35 207 Z'
 const MOLLETS = 'M69.5 296 C66 318 66 340 71 366 L84 366 C86 340 88 318 89.5 296 Z'
 
@@ -46,20 +45,13 @@ const DOS: Partie[] = [
   ['mollets', MOLLETS],
 ]
 
-// Équilibres suivis : deux familles de muscles comparées sur les séries pondérées
-const EQUILIBRES = [
-  { a: { nom: 'Poussée', muscles: ['pectoraux', 'delto_ant', 'triceps'] }, b: { nom: 'Tirage', muscles: ['grand_dorsal', 'haut_dos', 'biceps'] } },
-  { a: { nom: 'Quadriceps', muscles: ['quadriceps'] }, b: { nom: 'Ischio-jambiers', muscles: ['ischios'] } },
-]
-const SEUIL_EQUILIBRE = 90 // à partir de ce pourcentage, on parle d'équilibre
-
 function Vue({ legende, parties, volumes, maxi, choisi, onChoisir }: {
   legende: string
   parties: Partie[]
   volumes: Record<string, number>
   maxi: number
-  choisi: string | null
-  onChoisir: (muscle: string) => void
+  choisi?: string | null
+  onChoisir?: (muscle: string) => void
 }) {
   return (
     <figure>
@@ -76,9 +68,9 @@ function Vue({ legende, parties, volumes, maxi, choisi, onChoisir }: {
                   d={d}
                   className={`muscle${v > 0 ? ' travaille' : ''}${muscle === choisi ? ' choisi' : ''}`}
                   style={v > 0 ? { fillOpacity: 0.3 + 0.7 * (v / maxi) } : undefined}
-                  onClick={() => onChoisir(muscle)}
+                  onClick={onChoisir ? () => onChoisir(muscle) : undefined}
                 >
-                  <title>{MUSCLES[muscle]}{v > 0 ? ` : ${fr(v)} séries` : ''}</title>
+                  <title>{MUSCLES[muscle]}{v > 0 ? ` : ${nb(v)} séries` : ''}</title>
                 </path>
               )
             })}
@@ -90,46 +82,42 @@ function Vue({ legende, parties, volumes, maxi, choisi, onChoisir }: {
   )
 }
 
-/**
- * Mannequin vue de face et de dos : plus un muscle est sollicité, plus il est coloré.
- * « parMuscle » : résultat de calculerMuscles (séries pondérées et exercices par muscle).
- * On touche un muscle pour lire sa valeur et voir les exercices qui y contribuent.
- * Dessous : équilibre poussée / tirage et quadriceps / ischio-jambiers.
- */
+/** Silhouettes Face + Dos statiques (utilisées aussi dans le PDF du bilan mensuel). */
+export function SchemaMuscles({ parMuscle, choisi, onChoisir }: {
+  parMuscle: Record<string, Volume>
+  choisi?: string | null
+  onChoisir?: (muscle: string) => void
+}) {
+  const volumes = Object.fromEntries(Object.entries(parMuscle).map(([muscle, v]) => [muscle, v.total]))
+  const maxi = Math.max(0, ...Object.values(volumes))
+  return (
+    <div className="mannequin">
+      <Vue legende="Face" parties={FACE} volumes={volumes} maxi={maxi} choisi={choisi} onChoisir={onChoisir} />
+      <Vue legende="Dos" parties={DOS} volumes={volumes} maxi={maxi} choisi={choisi} onChoisir={onChoisir} />
+    </div>
+  )
+}
+
 export default function Mannequin({ parMuscle }: { parMuscle: Record<string, Volume> }) {
   const [choisi, setChoisi] = useState<string | null>(null)
   const volumes = Object.fromEntries(Object.entries(parMuscle).map(([muscle, v]) => [muscle, v.total]))
-  const maxi = Math.max(0, ...Object.values(volumes))
   const choisir = (muscle: string) => setChoisi(c => (c === muscle ? null : muscle))
-  // Phrase par équilibre : on part de la famille la moins travaillée, en pourcentage de l'autre
-  const total = (muscles: string[]) => muscles.reduce((t, m) => t + (parMuscle[m]?.total ?? 0), 0)
-  const equilibres = EQUILIBRES.flatMap(({ a, b }) => {
-    const va = total(a.muscles)
-    const vb = total(b.muscles)
-    if (va === 0 && vb === 0) return []
-    const [faible, fort] = va <= vb ? [{ ...a, v: va }, { ...b, v: vb }] : [{ ...b, v: vb }, { ...a, v: va }]
-    if (faible.v === 0) return [`${faible.nom} : aucun volume sur la période`]
-    const pct = Math.round((faible.v / fort.v) * 100)
-    return [pct >= SEUIL_EQUILIBRE ? `${a.nom} et ${b.nom.toLowerCase()} équilibrés` : `${faible.nom} : ${pct} % du volume de ${fort.nom.toLowerCase()}`]
-  })
+  const equilibres = phrasesEquilibre(parMuscle)
   const apports = choisi ? [...(parMuscle[choisi]?.apports ?? [])].sort((a, b) => b.series * b.coefficient - a.series * a.coefficient) : []
 
   return (
     <div>
-      <div className="mannequin">
-        <Vue legende="Face" parties={FACE} volumes={volumes} maxi={maxi} choisi={choisi} onChoisir={choisir} />
-        <Vue legende="Dos" parties={DOS} volumes={volumes} maxi={maxi} choisi={choisi} onChoisir={choisir} />
-      </div>
+      <SchemaMuscles parMuscle={parMuscle} choisi={choisi} onChoisir={choisir} />
       <p className="courbe-info" aria-live="polite">
         {choisi
-          ? <><strong>{MUSCLES[choisi]}</strong> · {volumes[choisi] ? `${fr(volumes[choisi])} séries pondérées` : 'non travaillé sur la période'}</>
+          ? <><strong>{MUSCLES[choisi]}</strong> · {volumes[choisi] ? `${nb(volumes[choisi])} séries pondérées` : 'non travaillé sur la période'}</>
           : 'Touche un muscle pour voir sa valeur.'}
       </p>
       {apports.length > 0 && (
         <ul className="apports">
           {apports.map(a => (
             <li key={a.exercice}>
-              {a.exercice} : {a.series} série(s) · <span className={`puce ${niveauDe(a.coefficient)}`}>{libelleNiveau(a.coefficient)}</span> → {fr(a.series * a.coefficient)}
+              {a.exercice} : {a.series} série(s) · <span className={`puce ${niveauDe(a.coefficient)}`}>{libelleNiveau(a.coefficient)}</span> → {nb(a.series * a.coefficient)}
             </li>
           ))}
         </ul>

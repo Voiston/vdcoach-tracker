@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
+import { aujourdhui, joursDepuis } from './format'
 import { useNotifier } from './ui'
 
 type Ligne = Record<string, any>
@@ -15,7 +16,9 @@ type Donnees = { version: number; exporte_le?: string } & Record<(typeof TABLES)
 async function toutes(table: string): Promise<Ligne[]> {
   const lignes: Ligne[] = []
   for (let debut = 0; ; debut += 1000) {
-    const { data, error } = await supabase.from(table).select('*').order('id').range(debut, debut + 999)
+    let q = supabase.from(table).select('*')
+    q = table === 'exercice_muscles' ? q.order('exercice_id').order('muscle') : q.order('id')
+    const { data, error } = await q.range(debut, debut + 999)
     if (error) throw new Error(messageErreur(error))
     lignes.push(...data)
     if (data.length < 1000) return lignes
@@ -33,12 +36,18 @@ function telecharger(nom: string, contenu: string, type: string) {
 
 const cellule = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
 
+function ligneValide(table: string, l: Ligne): boolean {
+  if (!l || typeof l !== 'object') return false
+  if (table === 'exercice_muscles') return typeof l.exercice_id === 'string' && typeof l.muscle === 'string'
+  return typeof l.id === 'string'
+}
+
 export default function Sauvegarde() {
   const [etat, setEtat] = useState('')
   const notifier = useNotifier()
   const [derniere, setDerniere] = useState<string | null>(localStorage.getItem(CLE))
   const [apercu, setApercu] = useState<Donnees | null>(null)
-  const jours = derniere ? Math.floor((Date.now() - Date.parse(derniere)) / 86_400_000) : null
+  const jours = derniere ? joursDepuis(derniere) : null
 
   async function exporter(format: 'json' | 'csv') {
     setEtat('Export en cours…')
@@ -46,7 +55,7 @@ export default function Sauvegarde() {
       const [clients, seances, exercices, mesures, bibliotheque_exercices, modeles, modele_exercices, objectifs, exercice_muscles] = await Promise.all(
         ['clients', 'seances', 'exercices', 'mesures', 'bibliotheque_exercices', 'modeles', 'modele_exercices', 'objectifs', 'exercice_muscles'].map(toutes),
       )
-      const jour = new Date().toLocaleDateString('sv-SE')
+      const jour = aujourdhui()
 
       if (format === 'json') {
         const maintenant = new Date().toISOString()
@@ -62,10 +71,10 @@ export default function Sauvegarde() {
             const base = [s.date_seance, nomClient.get(s.client_id), s.duree_min, s.ressenti]
             const exos = exercices.filter(x => x.seance_id === s.id).sort((a, b) => a.ordre - b.ordre)
             return (exos.length ? exos : [{}]).map(x =>
-              [...base, x.nom, x.series, x.repetitions, x.charge_kg, s.notes].map(cellule).join(';'),
+              [...base, x.nom, x.series, x.repetitions, x.charge_kg, x.duree_min, x.distance_km, s.notes].map(cellule).join(';'),
             )
           })
-        const entete = ['date', 'client', 'duree_min', 'ressenti', 'exercice', 'series', 'repetitions', 'charge_kg', 'notes'].join(';')
+        const entete = ['date', 'client', 'duree_min', 'ressenti', 'exercice', 'series', 'repetitions', 'charge_kg', 'duree_exo_min', 'distance_km', 'notes'].join(';')
         // BOM + séparateur « ; » : s'ouvre correctement dans Excel / LibreOffice en français
         telecharger(`vdcoach-seances-${jour}.csv`, '\uFEFF' + [entete, ...lignes].join('\r\n'), 'text/csv;charset=utf-8')
       }
@@ -82,12 +91,14 @@ export default function Sauvegarde() {
     if (!fichier) return
     try {
       const d = JSON.parse(await fichier.text())
-      const valide = d?.version === 1 && TABLES.every(t => (d[t] === undefined && FACULTATIVES.includes(t)) || (Array.isArray(d[t]) && d[t].every((l: Ligne) => typeof l?.id === 'string')))
+      const valide =
+        d?.version === 1 &&
+        TABLES.every(t => (d[t] === undefined && FACULTATIVES.includes(t)) || (Array.isArray(d[t]) && d[t].every((l: Ligne) => ligneValide(t, l))))
       if (!valide) throw new Error('fichier de sauvegarde non reconnu.')
       for (const t of TABLES) d[t] ??= []
       setApercu(d)
       setEtat('')
-    } catch (err) {
+    } catch {
       setApercu(null)
       setEtat('Erreur : ce fichier n’est pas une sauvegarde valide.')
     }
@@ -101,8 +112,10 @@ export default function Sauvegarde() {
     try {
       for (const t of TABLES) {
         const lignes = apercu[t]
+        if (!lignes.length) continue
+        const onConflict = t === 'exercice_muscles' && !('id' in lignes[0]) ? 'exercice_id,muscle' : 'id'
         for (let i = 0; i < lignes.length; i += 500) {
-          const { error } = await supabase.from(t).upsert(lignes.slice(i, i + 500), { onConflict: 'id' })
+          const { error } = await supabase.from(t).upsert(lignes.slice(i, i + 500), { onConflict })
           if (error) throw new Error(`${t} : ${messageErreur(error)}`)
         }
       }

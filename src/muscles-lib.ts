@@ -7,6 +7,26 @@ export type Volume = { total: number; principal: number; apports: Apport[] }
 
 export const cle = (n: string) => n.trim().toLowerCase()
 
+// Équilibres suivis : deux familles de muscles comparées sur les séries pondérées
+const EQUILIBRES = [
+  { a: { nom: 'Poussée', muscles: ['pectoraux', 'delto_ant', 'triceps'] }, b: { nom: 'Tirage', muscles: ['grand_dorsal', 'haut_dos', 'biceps'] } },
+  { a: { nom: 'Quadriceps', muscles: ['quadriceps'] }, b: { nom: 'Ischio-jambiers', muscles: ['ischios'] } },
+]
+const SEUIL_EQUILIBRE = 90 // à partir de ce pourcentage, on parle d'équilibre
+
+export function phrasesEquilibre(parMuscle: Record<string, Volume>): string[] {
+  const total = (muscles: string[]) => muscles.reduce((t, m) => t + (parMuscle[m]?.total ?? 0), 0)
+  return EQUILIBRES.flatMap(({ a, b }) => {
+    const va = total(a.muscles)
+    const vb = total(b.muscles)
+    if (va === 0 && vb === 0) return []
+    const [faible, fort] = va <= vb ? [{ ...a, v: va }, { ...b, v: vb }] : [{ ...b, v: vb }, { ...a, v: va }]
+    if (faible.v === 0) return [`${faible.nom} : aucun volume sur la période`]
+    const pct = Math.round((faible.v / fort.v) * 100)
+    return [pct >= SEUIL_EQUILIBRE ? `${a.nom} et ${b.nom.toLowerCase()} équilibrés` : `${faible.nom} : ${pct} % du volume de ${fort.nom.toLowerCase()}`]
+  })
+}
+
 export async function chargerBibliothequeMuscles(): Promise<{ biblio?: Record<string, Reference>; erreur?: unknown }> {
   const { data, error } = await supabase.from('bibliotheque_exercices').select('nom, groupe, exercice_muscles(muscle, coefficient)')
   if (error) return { erreur: error }

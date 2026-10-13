@@ -1,12 +1,23 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { construireBilan, type MesureBilan, type SeanceCharges } from './bilan-lib'
-import { decalerMois, libelleMois, moisCourant } from './facturation-lib'
+import { calculerBilan, construireBilan, type Bilan, type MesureBilan, type SeanceCharges } from './bilan-lib'
+import BilanPdf, { ApercuBilanPdf } from './BilanPdf'
+import type { Point } from './Courbe'
+import { bornesMois, decalerMois, libelleMois, moisCourant } from './facturation-lib'
+import { calculerMuscles, chargerBibliothequeMuscles, type Volume } from './muscles-lib'
 import { chargerObjectifs } from './objectifs-lib'
-import { MessageErreur, useClient, useNotifier, useOccupe } from './ui'
+import { Champ, MessageErreur, useClient, useNotifier, useOccupe } from './ui'
 
-// Bilan d'un mois à envoyer au client : on le prépare, on le relit (et on le modifie si besoin), puis on le copie.
+function marquerRecords(points: Point[]): Point[] {
+  let max = -Infinity
+  return points.map((p, i) => {
+    const record = i > 0 && p.valeur > max
+    max = Math.max(max, p.valeur)
+    return { ...p, record }
+  })
+}
+
 export default function BilanMensuel() {
   const client = useClient()
   const notifier = useNotifier()
@@ -14,25 +25,70 @@ export default function BilanMensuel() {
   const moisProposes = [courant, decalerMois(courant, -1), decalerMois(courant, -2)]
   const [mois, setMois] = useState(courant)
   const [texte, setTexte] = useState<string | null>(null)
+  const [bilan, setBilan] = useState<Bilan | null>(null)
+  const [parMuscle, setParMuscle] = useState<Record<string, Volume>>({})
+  const [poids, setPoids] = useState<Point[]>([])
+  const [courbesExos, setCourbesExos] = useState<{ nom: string; points: Point[] }[]>([])
+  const [exoChoisi, setExoChoisi] = useState('')
+  const [mot, setMot] = useState('')
+  const [apercuOuvert, setApercuOuvert] = useState(false)
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
 
   async function preparer() {
-    const [s, m, o] = await Promise.all([
-      supabase.from('seances').select('date_seance, exercices(nom, charge_kg)').eq('client_id', client.id).order('date_seance'),
+    const [s, m, o, b] = await Promise.all([
+      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg)').eq('client_id', client.id).order('date_seance'),
       supabase.from('mesures').select('type, valeur, date_mesure').eq('client_id', client.id).order('date_mesure'),
       chargerObjectifs(client.id),
+      chargerBibliothequeMuscles(),
     ])
-    const err = s.error ?? m.error ?? o.erreur
+    const err = s.error ?? m.error ?? o.erreur ?? b.erreur
     if (err) return setErreur(messageErreur(err))
     setErreur('')
-    setTexte(construireBilan({
-      prenom: client.prenom,
-      mois,
-      seances: s.data as unknown as SeanceCharges[],
-      mesures: m.data as MesureBilan[],
-      objectifs: o.donnees,
-    }))
+
+    const seances = (s.data ?? []) as unknown as SeanceCharges[]
+    const mesures = (m.data ?? []) as MesureBilan[]
+    const { debut, fin } = bornesMois(mois)
+
+    const donneesBilan = { prenom: client.prenom, mois, seances, mesures, objectifs: o.donnees }
+    setBilan(calculerBilan(donneesBilan))
+    setTexte(construireBilan(donneesBilan))
+
+    // Volume musculaire sur les séances du mois choisi
+    const seancesMois = seances
+      .filter(x => x.date_seance >= debut && x.date_seance < fin)
+      .map(x => ({ date_seance: x.date_seance, exercices: x.exercices.map(e => ({ nom: e.nom, series: e.series ?? 1 })) }))
+    setParMuscle(calculerMuscles(seancesMois, b.biblio ?? null).parMuscle)
+
+    // Courbe de poids jusqu'à la fin du mois choisi
+    setPoids(
+      mesures
+        .filter(x => x.type === 'poids' && x.date_mesure < fin)
+        .map(x => ({ date: x.date_mesure, valeur: Number(x.valeur) })),
+    )
+
+    // Courbes d'exercices : on privilégie les exercices pratiqués pendant le mois qui ont au moins 2 séances avec charge
+    const seancesJusquaFin = seances.filter(x => x.date_seance < fin)
+    const frequenceMois = new Map<string, number>()
+    for (const seance of seances.filter(x => x.date_seance >= debut && x.date_seance < fin)) {
+      for (const x of seance.exercices) {
+        if (x.charge_kg !== null) frequenceMois.set(x.nom.trim(), (frequenceMois.get(x.nom.trim()) ?? 0) + 1)
+      }
+    }
+    const tousNoms = [...new Set(seancesJusquaFin.flatMap(seance => seance.exercices.filter(x => x.charge_kg !== null).map(x => x.nom.trim())))]
+    const candidats = tousNoms
+      .map(nom => {
+        const pts = seancesJusquaFin.flatMap(seance => {
+          const charges = seance.exercices.filter(x => x.nom.trim() === nom && x.charge_kg !== null).map(x => Number(x.charge_kg))
+          return charges.length ? [{ date: seance.date_seance, valeur: Math.max(...charges) }] : []
+        })
+        return { nom, points: marquerRecords(pts), freq: frequenceMois.get(nom) ?? 0 }
+      })
+      .filter(c => c.points.length >= 2)
+      .sort((x, y) => y.freq - x.freq || y.points.length - x.points.length)
+
+    setCourbesExos(candidats.map(({ nom, points }) => ({ nom, points })))
+    setExoChoisi(candidats[0]?.nom ?? '')
   }
 
   async function copier() {
@@ -45,22 +101,83 @@ export default function BilanMensuel() {
     }
   }
 
+  function exporterPdf() {
+    const ancienTitre = document.title
+    document.title = `Bilan-${client.prenom}-${mois}`
+    window.print()
+    setTimeout(() => { document.title = ancienTitre }, 500)
+  }
+
+  const courbeExercice = courbesExos.find(c => c.nom === exoChoisi) ?? null
+
   return (
     <div>
       <h3>Bilan du mois</h3>
-      <p className="meta">Un récapitulatif à envoyer à {client.prenom} : séances, records, mesures et objectifs en cours.</p>
+      <p className="meta">Un récapitulatif à envoyer à {client.prenom} (en PDF A4 ou en message texte) : séances, records, mesures, muscles et objectifs.</p>
       <div className="ligne">
-        <select aria-label="Mois du bilan" value={mois} onChange={e => { setMois(e.target.value); setTexte(null) }}>
+        <select aria-label="Mois du bilan" value={mois} onChange={e => { setMois(e.target.value); setTexte(null); setBilan(null); setApercuOuvert(false) }}>
           {moisProposes.map(m => <option key={m} value={m}>{libelleMois(m)}</option>)}
         </select>
-        <button type="button" className="secondaire" disabled={occupe} onClick={() => lancer(preparer)}>{occupe ? 'Préparation…' : 'Préparer le bilan'}</button>
+        <button type="button" className="secondaire" disabled={occupe} onClick={() => lancer(preparer)}>
+          {occupe ? 'Préparation…' : 'Préparer le bilan'}
+        </button>
       </div>
       <MessageErreur message={erreur} reessayer={() => lancer(preparer)} />
-      {texte !== null && (
-        <>
-          <textarea aria-label="Bilan à envoyer" rows={Math.min(18, texte.split('\n').length + 1)} value={texte} onChange={e => setTexte(e.target.value)} style={{ marginTop: '.75rem' }} />
-          <button type="button" onClick={copier} style={{ marginTop: '.5rem' }}>Copier le bilan</button>
-        </>
+
+      {texte !== null && bilan !== null && (
+        <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '.8rem' }}>
+          <Champ libelle="Le mot du coach (affiché en haut du PDF, facultatif)">
+            <textarea
+              rows={3}
+              placeholder={`Ex. Bravo ${client.prenom} pour ta régularité ce mois-ci ! On continue sur cette lancée le mois prochain.`}
+              value={mot}
+              onChange={e => setMot(e.target.value)}
+            />
+          </Champ>
+
+          {courbesExos.length > 1 && (
+            <Champ libelle="Courbe d'exercice à inclure dans le PDF">
+              <select value={exoChoisi} onChange={e => setExoChoisi(e.target.value)}>
+                {courbesExos.map(c => <option key={c.nom} value={c.nom}>{c.nom} ({c.points.length} séances)</option>)}
+              </select>
+            </Champ>
+          )}
+
+          <div className="ligne" style={{ flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setApercuOuvert(true)}>Aperçu du PDF</button>
+            <button type="button" className="secondaire" onClick={exporterPdf}>Télécharger / Imprimer</button>
+            <button type="button" className="secondaire" onClick={copier}>Copier le message texte</button>
+          </div>
+
+          <details>
+            <summary className="meta" style={{ cursor: 'pointer' }}>Voir ou modifier le texte du message</summary>
+            <textarea
+              aria-label="Bilan à envoyer"
+              rows={Math.min(18, texte.split('\n').length + 1)}
+              value={texte}
+              onChange={e => setTexte(e.target.value)}
+              style={{ marginTop: '.5rem' }}
+            />
+          </details>
+
+          <BilanPdf
+            bilan={bilan}
+            parMuscle={parMuscle}
+            courbes={{ poids, exercice: courbeExercice }}
+            mot={mot}
+          />
+
+          {apercuOuvert && (
+            <ApercuBilanPdf
+              bilan={bilan}
+              parMuscle={parMuscle}
+              courbes={{ poids, exercice: courbeExercice }}
+              mot={mot}
+              onFermer={() => setApercuOuvert(false)}
+              onImprimer={exporterPdf}
+            />
+          )}
+        </div>
       )}
     </div>
   )

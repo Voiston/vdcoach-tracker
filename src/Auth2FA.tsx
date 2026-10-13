@@ -4,7 +4,6 @@ import { Champ } from './ui'
 import { seDeconnecter } from './deconnexion'
 import { messageErreur } from './erreurs'
 
-// Écran affiché à la connexion quand la double authentification est activée.
 export function Verification2FA({ onOk }: { onOk: () => void }) {
   const [code, setCode] = useState('')
   const [erreur, setErreur] = useState('')
@@ -31,7 +30,6 @@ export function Verification2FA({ onOk }: { onOk: () => void }) {
   )
 }
 
-// Section d'activation / désactivation de la double authentification.
 export function Securite() {
   const [facteur, setFacteur] = useState<{ id: string } | null | undefined>(undefined)
   const [enrol, setEnrol] = useState<{ id: string; qr: string; secret: string } | null>(null)
@@ -48,6 +46,10 @@ export function Securite() {
   }, [])
 
   async function activer() {
+    const existants = await supabase.auth.mfa.listFactors()
+    for (const f of existants.data?.all ?? []) {
+      if (f.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: f.id })
+    }
     const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `VDCoach ${Date.now()}` })
     if (error) return setMessage(messageErreur(error))
     setMessage('')

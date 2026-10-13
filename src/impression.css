@@ -1,0 +1,149 @@
+/* Document du bilan mensuel (PDF) : invisible à l'écran par défaut, visible dans l'aperçu ou à l'impression.
+   Les variables de couleur sont fixées en clair : le PDF reste identique quel que soit le thème de l'appareil. */
+@page { size: A4 portrait; margin: 0; } /* marge nulle : le navigateur n'ajoute ni date ni adresse en haut et en bas */
+
+#bilan-impression,
+.bilan-apercu-page {
+  --fond: #fff; --surface: #fff; --encre: #17231f; --discret: #5a6963;
+  --trait: #e3e9e6; --bord: #d3ddd8;
+  --accent: #2f7d6b; --accent-fonce: #25665a; --accent-doux: #dcefe8;
+  --succes: #2e7d4f; --danger: #b3392f;
+  color: var(--encre);
+  background: #fff;
+  font-size: 10pt;
+  line-height: 1.45;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+#bilan-impression { display: none; }
+
+#bilan-impression *, #bilan-impression *::before, #bilan-impression *::after,
+.bilan-apercu-page *, .bilan-apercu-page *::before, .bilan-apercu-page *::after {
+  box-sizing: border-box;
+}
+
+/* Fenêtre modale d'aperçu à l'écran */
+.bilan-apercu-voile {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  overflow-y: auto;
+  background: rgba(15, 22, 20, .72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.bilan-apercu-barre {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: min(100%, 210mm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: 1rem;
+  padding: .6rem .85rem;
+  background: var(--surface);
+  color: var(--encre);
+  border-radius: 16px;
+  box-shadow: var(--ombre);
+}
+
+.bilan-apercu-barre strong {
+  font-size: .95rem;
+  padding-left: .25rem;
+}
+
+.bilan-apercu-page {
+  width: min(100%, 210mm);
+  min-height: 297mm;
+  margin-bottom: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .4);
+  overflow: hidden;
+}
+
+@media print {
+  html { color-scheme: light; }
+  html, body { background: #fff !important; }
+  body > :not(#bilan-impression) { display: none !important; }
+  #bilan-impression { display: block; }
+}
+
+/* Cadre : marges de 14 mm répétées en haut et en bas de chaque page (le @page est à 0), 15 mm sur les côtés */
+.bp-cadre { width: 100%; border-collapse: collapse; }
+.bp-cadre td { padding: 0; }
+.bp-marge { height: 14mm; }
+.bp-contenu { padding: 0 15mm; vertical-align: top; }
+
+/* En-tête */
+.bp-entete { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 5mm; border-bottom: 2px solid var(--accent); }
+.bp-entete img { display: block; height: 12mm; width: auto; }
+.bp-titre { text-align: right; }
+.bp-titre small { display: block; font-size: 8pt; letter-spacing: .12em; text-transform: uppercase; color: var(--discret); }
+.bp-titre h1 { margin-top: 1mm; font-size: 22pt; line-height: 1.1; }
+.bp-titre span { font-size: 11pt; font-weight: 600; color: var(--accent-fonce); text-transform: capitalize; }
+
+/* Chiffres clés et mot du coach */
+.bp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; margin-top: 6mm; }
+.bp-stats div { padding: 4mm 2mm; text-align: center; background: var(--accent-doux); border-radius: 3mm; }
+.bp-stats strong { display: block; font-family: var(--titre); font-size: 24pt; line-height: 1.1; color: var(--accent-fonce); }
+.bp-stats span { font-size: 9pt; color: var(--discret); }
+.bp-mot { margin-top: 6mm; padding: 4mm 5mm; border-left: 1.2mm solid var(--accent); background: var(--accent-doux); border-radius: 0 3mm 3mm 0; break-inside: avoid; }
+.bp-mot strong { display: block; margin-bottom: 1.5mm; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-fonce); }
+.bp-mot p { white-space: pre-wrap; }
+
+/* Sections */
+.bp-section { margin-top: 7mm; break-inside: avoid; }
+.bp-h { margin: 0 0 3mm; padding-bottom: 1.5mm; font-family: var(--titre); font-size: 13pt; font-weight: 600; letter-spacing: 0; color: var(--accent-fonce); border-bottom: 1px solid var(--trait); }
+.bp-sh { margin: 0 0 2mm; font-size: 10pt; font-weight: 700; }
+
+.bp-records { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+.bp-records li { display: flex; justify-content: space-between; align-items: center; gap: 3mm; padding: 3mm 4mm; border: 1px solid var(--bord); border-radius: 3mm; font-weight: 600; }
+.bp-records small { display: block; font-weight: 400; font-size: 8.5pt; color: var(--discret); }
+.bp-records b { font-family: var(--titre); font-size: 14pt; white-space: nowrap; color: var(--accent-fonce); }
+
+.bp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.bp-table th { padding: 0 0 1.5mm; text-align: right; font-size: 8.5pt; font-weight: 600; color: var(--discret); }
+.bp-table td { padding: 2mm 0; text-align: right; border-top: 1px solid var(--trait); }
+.bp-table th:first-child, .bp-table td:first-child { text-align: left; }
+.bp-table td:first-child { font-weight: 600; }
+.bp-ecart { font-weight: 700; color: var(--accent-fonce); }
+
+.bp-objectifs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4mm; }
+.bp-objectifs li > div:first-child { display: flex; justify-content: space-between; gap: 4mm; }
+.bp-detail { font-size: 9pt; color: var(--discret); }
+.bp-barre { height: 2.5mm; margin-top: 1.5mm; background: var(--trait); border-radius: 99px; overflow: hidden; }
+.bp-barre i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+
+/* Page 2 : muscles et progression */
+.bp-muscles { display: grid; grid-template-columns: 100mm 1fr; gap: 8mm; align-items: center; }
+.bp-muscles .mannequin { margin: 0; padding: 0; gap: 2mm; background: none; border-radius: 0; }
+.bp-muscles .mannequin figure { max-width: 48mm; }
+.bp-equilibre ul { list-style: none; margin: 0 0 3mm; padding: 0; }
+.bp-equilibre li { padding: 2mm 0; font-weight: 600; border-bottom: 1px solid var(--trait); }
+.bp-note { margin-top: 2mm; font-size: 8.5pt; color: var(--discret); }
+.bp-legende { display: flex; align-items: center; gap: 2mm; margin-top: 4mm; font-size: 8.5pt; color: var(--discret); }
+.bp-legende i { width: 28mm; height: 2.5mm; border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, #fff), var(--accent)); }
+.bp-courbes { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start; }
+.bp-courbes > div { min-width: 0; }
+#bilan-impression .courbe, .bilan-apercu-page .courbe { border: 1px solid var(--trait); border-radius: 3mm; }
+#bilan-impression .courbe-info, #bilan-impression .meta,
+.bilan-apercu-page .courbe-info, .bilan-apercu-page .meta { font-size: 9pt; }
+
+.bp-pied { display: flex; justify-content: space-between; margin-top: 10mm; padding-top: 3mm; font-size: 8.5pt; color: var(--discret); border-top: 1px solid var(--trait); }
+
+/* Adaptation de l'aperçu sur écran de téléphone (l'impression papier reste en A4 strict) */
+@media screen and (max-width: 720px) {
+  .bilan-apercu-page { min-height: auto; }
+  .bilan-apercu-page .bp-contenu { padding: 0 6mm; }
+  .bilan-apercu-page .bp-records,
+  .bilan-apercu-page .bp-muscles,
+  .bilan-apercu-page .bp-courbes { grid-template-columns: 1fr; }
+}
