@@ -6,7 +6,11 @@ export type Brouillon = {
   clientId: string
   date: string
   duree: string
-  ressenti: string
+  ressenti?: string
+  diff_muscu?: string
+  diff_cardio?: string
+  fatigue?: string
+  sommeil?: string
   notes: string
   lignes: {
     nom: string
@@ -17,6 +21,7 @@ export type Brouillon = {
     distance_km?: string
     reglage?: string
     lie_suivant?: boolean
+    valide?: boolean
   }[]
   enregistreLe: string
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { dateFr, etiquettesSuperset, resumeCardio } from './format'
+import { dateFr, etiquettesSuperset, resumeCardio, resumeRessentis } from './format'
 import FenetreProgrammePdf from './ProgrammePdf'
 import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
 
@@ -17,7 +17,18 @@ type Exercice = {
   reglage?: string | null
   lie_suivant?: boolean | null
 }
-type Seance = { id: string; date_seance: string; duree_min: number | null; ressenti: number | null; notes: string | null; exercices: Exercice[] }
+type Seance = {
+  id: string
+  date_seance: string
+  duree_min: number | null
+  ressenti: number | null
+  diff_muscu?: number | null
+  diff_cardio?: number | null
+  fatigue?: number | null
+  sommeil?: number | null
+  notes: string | null
+  exercices: Exercice[]
+}
 
 const TAILLE = 20
 
@@ -37,7 +48,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     if (depuis === 0) setPret(false)
     const { data, error } = await supabase
       .from('seances')
-      .select('id, date_seance, duree_min, ressenti, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
+      .select('id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
       .eq('client_id', client.id)
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
@@ -82,13 +93,12 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
         {visibles.map(s => {
           const exosTries = [...s.exercices].sort((a, b) => a.ordre - b.ordre)
           const etiquettes = etiquettesSuperset(exosTries)
+          const infosMeta = [s.duree_min ? `${s.duree_min} min` : '', resumeRessentis(s)].filter(Boolean).join(' · ')
           return (
             <li key={s.id}>
               <div>
                 <strong>{dateFr(s.date_seance, true)}</strong>
-                <p className="meta">
-                  {[s.duree_min ? `${s.duree_min} min` : '', s.ressenti ? `ressenti ${s.ressenti}/10` : ''].filter(Boolean).join(' · ')}
-                </p>
+                {infosMeta && <p className="meta">{infosMeta}</p>}
                 {exosTries.map((x, idx) => (
                   <p key={x.id}>
                     {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}

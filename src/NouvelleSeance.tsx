@@ -3,10 +3,10 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { MUSCLES } from './definitions'
-import { aujourdhui, dateLocale, etiquettesSuperset, resumeCardio } from './format'
+import { aujourdhui, courte, dateLocale, etiquettesSuperset, resumeCardio } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
-import { Champ, Compteur, FeuilleSaisie, MessageErreur, useClient, useNotifier } from './ui'
+import { Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
 import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
 import Chronometre from './Chronometre'
 
@@ -19,6 +19,7 @@ type Ligne = {
   distance_km: string
   reglage: string
   lie_suivant: boolean
+  valide: boolean
 }
 type Exo = {
   id: string
@@ -32,6 +33,10 @@ type Exo = {
   reglage?: string | null
   lie_suivant?: boolean | null
 }
+type SeanceRecente = { id: string; date_seance: string; duree_min: number | null; exercices: Exo[] }
+
+const DUREES_RAPIDES = ['30', '45', '60', '75', '90']
+const PAS_CHARGE = [1, 2.5, 5, 10]
 
 const vide = (): Ligne => ({
   nom: '',
@@ -42,6 +47,7 @@ const vide = (): Ligne => ({
   distance_km: '',
   reglage: '',
   lie_suivant: false,
+  valide: false,
 })
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
 const txt = (n: number | null | undefined) => (n == null ? '' : String(n))
@@ -58,6 +64,7 @@ const versLignes = (exos: Exo[]): Ligne[] =>
           distance_km: txt(x.distance_km),
           reglage: x.reglage ?? '',
           lie_suivant: Boolean(x.lie_suivant),
+          valide: false,
         }))
     : [vide()]
 
@@ -80,7 +87,7 @@ const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&')
 function suggestion(d: Dernier): string {
   if (d.repetitions === null) return ''
   if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return `essaie ${+(Number(d.charge_kg) + PAS_KG).toFixed(2)} kg`
-  return `vise ${d.repetitions + 1} répétitions${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
+  return `vise ${d.repetitions + 1} reps${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
 }
 
 function proposition(d: Dernier) {
@@ -123,16 +130,22 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const zonesSensibles = client.zones_sensibles ?? []
   const notifier = useNotifier()
   const [feuilleModele, setFeuilleModele] = useState(false)
-  const [choix, setChoix] = useState<number | null>(null)
+  // choix : 'ajout' (sélection multiple) ou indice d'une ligne existante à remplacer
+  const [choix, setChoix] = useState<number | 'ajout' | null>(null)
+  const [reglagesOuverts, setReglagesOuverts] = useState<Record<number, boolean>>({})
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
   const [date, setDate] = useState(aujourdhui())
-  const [duree, setDuree] = useState('')
-  const [ressenti, setRessenti] = useState('')
+  const [duree, setDuree] = useState('60')
+  const [diffMuscu, setDiffMuscu] = useState('')
+  const [diffCardio, setDiffCardio] = useState('')
+  const [fatigue, setFatigue] = useState('')
+  const [sommeil, setSommeil] = useState('')
   const [notes, setNotes] = useState('')
   const [lignes, setLignes] = useState<Ligne[]>([vide()])
   const [anciens, setAnciens] = useState<string[]>([])
   const [noms, setNoms] = useState<string[]>([])
   const [modeles, setModeles] = useState<{ id: string; nom: string }[]>([])
+  const [recentes, setRecentes] = useState<SeanceRecente[]>([])
   const [derniers, setDerniers] = useState<Record<string, Dernier>>({})
   const [biblio, setBiblio] = useState<Record<string, Fiche>>({})
   const [erreur, setErreur] = useState('')
@@ -150,6 +163,32 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     lie_suivant: l.lie_suivant,
   })
 
+  // Construit une ligne pré-remplie automatiquement avec la dernière performance du client (ou 3×10 par défaut)
+  function creerLignePreRemplie(nom: string): Ligne {
+    const d = derniers[cle(nom)]
+    const cardio = estCardio(nom)
+    if (d) {
+      return {
+        nom,
+        series: cardio ? '' : txt(d.series ?? 3),
+        repetitions: cardio ? '' : txt(d.repetitions ?? 10),
+        charge_kg: cardio ? '' : txt(d.charge_kg),
+        duree_min: cardio ? txt(d.duree_min ?? 20) : '',
+        distance_km: cardio ? txt(d.distance_km) : '',
+        reglage: d.reglage ?? '',
+        lie_suivant: false,
+        valide: false,
+      }
+    }
+    return {
+      ...vide(),
+      nom,
+      series: cardio ? '' : '3',
+      repetitions: cardio ? '' : '10',
+      duree_min: cardio ? '20' : '',
+    }
+  }
+
   useEffect(() => {
     if (seanceId) return
     supabase.from('clients').select('id, prenom, nom, groupe_facturation').eq('actif', true).neq('id', clientId).order('prenom').then(({ data }) => setAutres(data ?? []))
@@ -165,14 +204,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (seanceId) {
       supabase
         .from('seances')
-        .select(`client_id, date_seance, duree_min, ressenti, notes, ${EXOS}`)
+        .select(`client_id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, ${EXOS}`)
         .eq('id', seanceId)
         .single()
         .then(({ data, error }) => {
           if (error || !data) return setErreur(error ? messageErreur(error) : 'Séance introuvable.')
           setDate(data.date_seance)
           setDuree(txt(data.duree_min))
-          setRessenti(txt(data.ressenti))
+          setDiffMuscu(txt(data.diff_muscu ?? data.ressenti))
+          setDiffCardio(txt(data.diff_cardio))
+          setFatigue(txt(data.fatigue))
+          setSommeil(txt(data.sommeil))
           setNotes(data.notes ?? '')
           setLignes(versLignes(data.exercices as Exo[]))
           setAnciens((data.exercices as Exo[]).map(x => x.id))
@@ -192,11 +234,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
-    // Si le client a déjà un mémo de réglage personnel sur un exercice du modèle, on le pré-remplit
-    const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => ({
-      ...l,
-      reglage: l.reglage || derniers[cle(l.nom)]?.reglage || '',
-    }))
+    // Complète le modèle avec les dernières charges et réglages connus du client
+    const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => {
+      const d = derniers[cle(l.nom)]
+      return {
+        ...l,
+        series: l.series || txt(d?.series ?? (estCardio(l.nom) ? null : 3)),
+        repetitions: l.repetitions || txt(d?.repetitions ?? (estCardio(l.nom) ? null : 10)),
+        charge_kg: l.charge_kg || txt(d?.charge_kg),
+        reglage: l.reglage || d?.reglage || '',
+      }
+    })
     setLignes(nouvelles)
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
@@ -231,12 +279,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .then(({ data }) => setBiblio(Object.fromEntries((data ?? []).map(x => [cle(x.nom), x as Fiche]))))
   }, [])
 
-  // Dernière performance ET dernier mémo de réglage de ce client pour chaque exercice
+  // Charge l'historique récent du client (pour pré-remplir les exercices ET proposer les 3 dernières séances en 1 tap)
   useEffect(() => {
     if (!clientId) return
     supabase
       .from('seances')
-      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg, duree_min, distance_km, reglage)')
+      .select(`id, date_seance, duree_min, ${EXOS}`)
       .eq('client_id', clientId)
       .lte('date_seance', date)
       .order('date_seance', { ascending: false })
@@ -244,9 +292,11 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .limit(60)
       .then(({ data }) => {
         const m: Record<string, Dernier> = {}
-        for (const s of data ?? []) {
+        const histo: SeanceRecente[] = []
+        for (const s of (data ?? []) as unknown as SeanceRecente[]) {
           if (s.id === seanceId) continue
-          for (const x of s.exercices as any[]) {
+          if (histo.length < 3 && s.exercices.length > 0) histo.push(s)
+          for (const x of s.exercices) {
             const k = cle(x.nom)
             if (!m[k]) {
               m[k] = {
@@ -259,12 +309,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 reglage: x.reglage ?? null,
               }
             } else if (!m[k].reglage && x.reglage) {
-              // Retrouve le dernier mémo de réglage connu même s'il date d'une séance plus ancienne
               m[k].reglage = x.reglage
             }
           }
         }
         setDerniers(m)
+        setRecentes(histo)
       })
   }, [clientId, seanceId, date])
 
@@ -297,17 +347,35 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   useEffect(() => {
     if (seanceId || brouillon || !clientId) return
-    const contenu = duree.trim() || ressenti.trim() || notes.trim() || lignes.some(l => l.nom.trim())
+    const contenu =
+      diffMuscu || diffCardio || fatigue || sommeil || notes.trim() || lignes.some(l => l.nom.trim())
     if (!contenu) return
-    const minuteur = setTimeout(() => ecrireBrouillon({ clientId, date, duree, ressenti, notes, lignes }), 600)
+    const minuteur = setTimeout(
+      () =>
+        ecrireBrouillon({
+          clientId,
+          date,
+          duree,
+          diff_muscu: diffMuscu,
+          diff_cardio: diffCardio,
+          fatigue,
+          sommeil,
+          notes,
+          lignes,
+        }),
+      600,
+    )
     return () => clearTimeout(minuteur)
-  }, [seanceId, brouillon, clientId, date, duree, ressenti, notes, lignes])
+  }, [seanceId, brouillon, clientId, date, duree, diffMuscu, diffCardio, fatigue, sommeil, notes, lignes])
 
   function reprendreBrouillon() {
     if (!brouillon) return
     setDate(brouillon.date)
-    setDuree(brouillon.duree)
-    setRessenti(brouillon.ressenti)
+    setDuree(brouillon.duree || '60')
+    setDiffMuscu(brouillon.diff_muscu ?? brouillon.ressenti ?? '')
+    setDiffCardio(brouillon.diff_cardio ?? '')
+    setFatigue(brouillon.fatigue ?? '')
+    setSommeil(brouillon.sommeil ?? '')
     setNotes(brouillon.notes)
     setLignes(brouillon.lignes.length ? brouillon.lignes.map(l => ({ ...vide(), ...l })) : [vide()])
     setBrouillon(null)
@@ -318,30 +386,49 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setBrouillon(null)
   }
 
-  function ouvrirNouveau() {
-    const derniere = lignes.length - 1
-    const reutilise = derniere >= 0 && !lignes[derniere].nom.trim()
-    if (!reutilise) setLignes(l => [...l, vide()])
-    setChoix(reutilise ? derniere : lignes.length)
-  }
-
-  function choisirExercice(nom: string) {
-    const i = choix
-    if (i === null) return
-    const memoPrecedent = derniers[cle(nom)]?.reglage ?? ''
-    setLignes(l =>
-      l.map((x, j) => (j === i ? { ...x, nom, reglage: x.reglage.trim() ? x.reglage : memoPrecedent } : x)),
-    )
+  function choisirUnExercice(nom: string) {
+    const nouvelle = creerLignePreRemplie(nom)
+    if (choix === 'ajout') {
+      setLignes(l => {
+        const sansVide = l.filter(x => x.nom.trim() !== '')
+        return [...sansVide, nouvelle]
+      })
+    } else if (typeof choix === 'number') {
+      setLignes(l => l.map((x, j) => (j === choix ? { ...nouvelle, lie_suivant: x.lie_suivant } : x)))
+    }
     setChoix(null)
   }
 
-  function fermerSelecteur() {
-    if (choix !== null && !lignes[choix]?.nom.trim() && lignes.length > 1) setLignes(l => l.filter((_, j) => j !== choix))
+  function choisirPlusieursExercices(nomsChoisis: string[]) {
+    const nouvelles = nomsChoisis.map(creerLignePreRemplie)
+    setLignes(l => {
+      const sansVide = l.filter(x => x.nom.trim() !== '')
+      return [...sansVide, ...nouvelles]
+    })
     setChoix(null)
   }
 
   function retirer(i: number) {
     setLignes(l => (l.length > 1 ? l.filter((_, j) => j !== i) : [vide()]))
+  }
+
+  function deplacer(i: number, delta: -1 | 1) {
+    const cible = i + delta
+    if (cible < 0 || cible >= lignes.length) return
+    setLignes(l => {
+      const copie = [...l]
+      const [elem] = copie.splice(i, 1)
+      copie.splice(cible, 0, elem)
+      return copie
+    })
+  }
+
+  function dupliquer(i: number) {
+    setLignes(l => {
+      const copie = [...l]
+      copie.splice(i + 1, 0, { ...l[i], valide: false })
+      return copie
+    })
   }
 
   function copierDerniere(i: number) {
@@ -387,18 +474,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setLignes(l => l.map((x, j) => (j === i ? { ...x, [champ]: valeur } : x)))
   }
 
-  async function reprendre() {
-    const { data, error } = await supabase
-      .from('seances')
-      .select(`duree_min, ${EXOS}`)
-      .eq('client_id', clientId)
-      .order('date_seance', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-    if (error) return setErreur(messageErreur(error))
-    if (!data?.length) return setErreur('Aucune séance précédente pour ce client.')
-    setLignes(versLignes(data[0].exercices as Exo[]))
-    setDuree(txt(data[0].duree_min))
+  function reprendreSeance(s: SeanceRecente) {
+    setLignes(versLignes(s.exercices))
+    if (s.duree_min) setDuree(txt(s.duree_min))
     setErreur('')
   }
 
@@ -450,7 +528,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const records = await detecterRecords()
 
     const sessionId = !seanceId && invites.length ? crypto.randomUUID() : null
-    const champs = { client_id: clientId, date_seance: date, duree_min: num(duree), ressenti: num(ressenti), notes: notes.trim() || null, ...(sessionId ? { session_id: sessionId } : {}) }
+    const champs = {
+      client_id: clientId,
+      date_seance: date,
+      duree_min: num(duree),
+      diff_muscu: num(diffMuscu),
+      diff_cardio: num(diffCardio),
+      fatigue: num(fatigue),
+      sommeil: num(sommeil),
+      notes: notes.trim() || null,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }
     let id = seanceId
     if (id) {
       const { error } = await supabase.from('seances').update(champs).eq('id', id)
@@ -517,7 +605,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const basculerInvite = (id: string) => setInvites(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
   const invalide =
     verifier(duree, REGLES.duree) ||
-    verifier(ressenti, REGLES.ressenti) ||
     lignes.some(l =>
       estCardio(l.nom)
         ? verifier(l.duree_min, REGLES.duree) || verifier(l.distance_km, REGLES.distance)
@@ -541,10 +628,36 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
             </div>
           </div>
         )}
-        <div className="entete-seance">
-          <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
-          <Champ libelle="Durée (min)" erreur={verifier(duree, REGLES.duree)}><input inputMode="numeric" value={duree} onChange={e => setDuree(e.target.value)} /></Champ>
-          <Champ libelle="Ressenti (1 à 10)" erreur={verifier(ressenti, REGLES.ressenti)}><input inputMode="numeric" value={ressenti} onChange={e => setRessenti(e.target.value)} /></Champ>
+
+        <div className="entete-seance-rapide">
+          <Champ libelle="Date">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+          </Champ>
+          <div className="champ">
+            <span className="champ-libelle">Durée (min)</span>
+            <div className="durees-rapides">
+              {DUREES_RAPIDES.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`puce-choix${duree === d ? ' actif' : ''}`}
+                  aria-pressed={duree === d}
+                  onClick={() => setDuree(duree === d ? '' : d)}
+                >
+                  {d}
+                </button>
+              ))}
+              <input
+                className="duree-input"
+                inputMode="numeric"
+                placeholder="Autre"
+                aria-label="Durée personnalisée en minutes"
+                value={duree}
+                onChange={e => setDuree(e.target.value)}
+              />
+            </div>
+            {verifier(duree, REGLES.duree) && <span className="champ-erreur" role="alert">{verifier(duree, REGLES.duree)}</span>}
+          </div>
         </div>
 
         {!seanceId && autres.length > 0 && (
@@ -576,27 +689,80 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         )}
 
         <h3>Exercices</h3>
-        {!seanceId && (
-          <>
-            <button type="button" className="secondaire" onClick={reprendre}>Reprendre la dernière séance</button>
+        {!seanceId && (recentes.length > 0 || modeles.length > 0) && (
+          <div className="raccourcis-seance">
+            {recentes.length > 0 && (
+              <div className="puces">
+                <span className="meta">Reprendre :</span>
+                {recentes.map((s, idx) => (
+                  <button key={s.id} type="button" className="puce-choix" onClick={() => reprendreSeance(s)}>
+                    ↺ {idx === 0 ? `Dernière (${courte(s.date_seance)})` : courte(s.date_seance)} ({s.exercices.length} exos)
+                  </button>
+                ))}
+              </div>
+            )}
             {modeles.length > 0 && (
               <select value="" onChange={e => appliquerModele(e.target.value)}>
                 <option value="">Charger un modèle…</option>
                 {modeles.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
               </select>
             )}
-          </>
+          </div>
         )}
+
         {lignes.map((l, i) => {
           const dernier = derniers[cle(l.nom)]
           const fiche = biblio[cle(l.nom)]
           const cardio = estCardio(l.nom)
           const prop = dernier ? proposition(dernier) : null
           const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
+          const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
+
+          // Mode replié (compact) quand l'exercice est coché ✓
+          if (l.valide && l.nom.trim()) {
+            const resumeCompact = cardio
+              ? resumeCardio({ duree_min: num(l.duree_min), distance_km: num(l.distance_km) })
+              : [
+                  l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '',
+                  l.charge_kg ? `@ ${l.charge_kg} kg` : '',
+                ].filter(Boolean).join(' ')
+            return (
+              <div className={`exercice compact${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`} key={i}>
+                <div className="exercice-entete">
+                  <button
+                    type="button"
+                    className="btn-valide actif"
+                    aria-label="Déplier cet exercice"
+                    onClick={() => maj(i, 'valide', false)}
+                  >
+                    ✓
+                  </button>
+                  {etiquettes[i] && <span className="puce superset">{etiquettes[i]}</span>}
+                  <button type="button" className="exercice-compact-texte" onClick={() => maj(i, 'valide', false)}>
+                    <strong>{l.nom}</strong>
+                    {resumeCompact && <span> — {resumeCompact}</span>}
+                    {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
+                  </button>
+                  <button type="button" className="lien danger" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                </div>
+              </div>
+            )
+          }
 
           return (
             <div className={`exercice${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`} key={i}>
               <div className="exercice-entete">
+                {l.nom.trim() && (
+                  <button
+                    type="button"
+                    className="btn-valide"
+                    title="Marquer comme fait et replier"
+                    aria-label="Marquer cet exercice comme fait et replier"
+                    onClick={() => maj(i, 'valide', true)}
+                  >
+                    ✓
+                  </button>
+                )}
                 {etiquettes[i] && <span className="puce superset">{etiquettes[i]}</span>}
                 <button
                   type="button"
@@ -606,7 +772,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 >
                   {l.nom.trim() || 'Choisir un exercice…'}
                 </button>
-                <button type="button" className="lien danger" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                <div className="exercice-outils">
+                  {i > 0 && (
+                    <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
+                  )}
+                  {i < lignes.length - 1 && (
+                    <button type="button" className="lien outil" aria-label="Descendre cet exercice" title="Descendre" onClick={() => deplacer(i, 1)}>↓</button>
+                  )}
+                  {l.nom.trim() && (
+                    <button type="button" className="lien outil" aria-label="Dupliquer cet exercice" title="Dupliquer (ex. série dégressive)" onClick={() => dupliquer(i)}>⎘</button>
+                  )}
+                  <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                </div>
               </div>
 
               {sollicitesSensibles.length > 0 && (
@@ -617,13 +794,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               )}
 
               {dernier && (
-                <>
+                <div className="derniere-ligne">
                   <DerniereFois d={dernier} cardio={cardio} />
                   <div className="exercice-actions">
-                    <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Comme la dernière fois</button>
+                    <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Dernière fois</button>
                     {prop && !cardio && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
                   </div>
-                </>
+                </div>
               )}
 
               {cardio ? (
@@ -635,53 +812,97 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 <div className="compteurs">
                   <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
                   <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
-                  <Compteur libelle="Charge (kg)" valeur={l.charge_kg} onChange={v => maj(i, 'charge_kg', v)} pas={PAS_KG} depart={dernier?.charge_kg ?? PAS_KG} decimal erreur={verifier(l.charge_kg, REGLES.charge)} />
+                  <Compteur
+                    libelle="Charge (kg)"
+                    valeur={l.charge_kg}
+                    onChange={v => maj(i, 'charge_kg', v)}
+                    pas={PAS_KG}
+                    choixPas={PAS_CHARGE}
+                    depart={dernier?.charge_kg ?? PAS_KG}
+                    decimal
+                    erreur={verifier(l.charge_kg, REGLES.charge)}
+                  />
                 </div>
               )}
 
-              <input
-                className="champ-reglage"
-                aria-label="Mémo de réglage pour cet exercice"
-                placeholder="⚙ Mémo réglage client (ex. élastique rouge, poulie cran 4, prise neutre…)"
-                value={l.reglage}
-                onChange={e => maj(i, 'reglage', e.target.value)}
-              />
+              {afficherReglage ? (
+                <input
+                  className="champ-reglage"
+                  aria-label="Mémo de réglage pour cet exercice"
+                  placeholder="⚙ Mémo réglage client (ex. élastique rouge, poulie cran 4, prise neutre…)"
+                  value={l.reglage}
+                  onChange={e => maj(i, 'reglage', e.target.value)}
+                />
+              ) : null}
 
               {fiche && <FicheExercice b={fiche} />}
 
-              {i < lignes.length - 1 && (
-                <button
-                  type="button"
-                  className={`lien superset-lien${l.lie_suivant ? ' actif' : ''}`}
-                  aria-pressed={l.lie_suivant}
-                  onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
-                >
-                  {l.lie_suivant ? '⛓ Lié à l’exercice suivant (Superset / Circuit)' : '+ Lier à l’exercice suivant (Superset)'}
-                </button>
-              )}
+              <div className="exercice-pied">
+                {!afficherReglage && (
+                  <button
+                    type="button"
+                    className="lien superset-lien"
+                    onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}
+                  >
+                    + ⚙ Mémo réglage
+                  </button>
+                )}
+                {i < lignes.length - 1 && (
+                  <button
+                    type="button"
+                    className={`lien superset-lien${l.lie_suivant ? ' actif' : ''}`}
+                    aria-pressed={l.lie_suivant}
+                    onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
+                  >
+                    {l.lie_suivant ? '⛓ Lié au suivant (Superset)' : '+ Lier au suivant (Superset)'}
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}
-        <button type="button" className="secondaire" onClick={ouvrirNouveau}>+ Ajouter un exercice</button>
-        <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)}>Enregistrer comme modèle</button>
 
-        <Champ libelle="Notes"><textarea value={notes} onChange={e => setNotes(e.target.value)} /></Champ>
+        <div className="ligne" style={{ flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setChoix('ajout')} style={{ flex: 2 }}>
+            + Ajouter des exercices
+          </button>
+          <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)} style={{ flex: 1 }}>
+            Créer un modèle
+          </button>
+        </div>
+
+        <h3>Ressentis & forme du jour (facultatif)</h3>
+        <div className="grille-ressentis">
+          <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
+          <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
+          <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
+          <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+        </div>
+
+        <Champ libelle="Notes de séance (facultatif)">
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} />
+        </Champ>
         <MessageErreur message={erreur} />
         <div className="barre-enregistrement">
           <span className="resume">
             {saisis.length} exercice{saisis.length > 1 ? 's' : ''}
             <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
           </span>
-          <button type="submit" disabled={envoi || Boolean(invalide)}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
+          <button type="submit" disabled={envoi || Boolean(invalide)}>
+            {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}
+          </button>
         </div>
       </form>
+
       {choix !== null && (
         <SelecteurExercice
           exercices={choixExercices}
           faits={faits}
           zonesSensibles={zonesSensibles}
-          onChoisir={choisirExercice}
-          onFermer={fermerSelecteur}
+          multiple={choix === 'ajout'}
+          onChoisir={choisirUnExercice}
+          onChoisirMultiple={choisirPlusieursExercices}
+          onFermer={() => setChoix(null)}
         />
       )}
       {feuilleModele && (

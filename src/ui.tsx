@@ -100,11 +100,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/**
- * Suppression avec possibilité d'annuler : l'élément disparaît tout de suite de l'écran,
- * mais n'est réellement supprimé qu'au bout de quelques secondes, sauf si on annule.
- * « effacer » renvoie l'erreur éventuelle (rien si tout s'est bien passé).
- */
 export function supprimerAvecAnnulation(o: {
   notifier: Notifier
   message: string
@@ -125,9 +120,7 @@ export function supprimerAvecAnnulation(o: {
   o.notifier(o.message, { duree: delai, annuler: () => { clearTimeout(minuteur); o.restaurer() } })
 }
 
-
 /* ---------- Erreurs ---------- */
-/** Message d'erreur ; le bouton « Réessayer » n'apparaît que pour les problèmes passagers (réseau, serveur). */
 export function MessageErreur({ message, reessayer }: { message: string; reessayer?: () => void }) {
   if (!message) return null
   const passager = message === MSG_RESEAU || message === MSG_SERVEUR
@@ -139,7 +132,6 @@ export function MessageErreur({ message, reessayer }: { message: string; reessay
   )
 }
 
-/** Plein écran d'erreur quand les données de départ n'ont pas pu être chargées. */
 export function ErreurChargement({ message }: { message: string }) {
   return (
     <div className="etat-vide" role="alert">
@@ -182,10 +174,6 @@ export function Champ({ libelle, aide, erreur, children }: { libelle: string; ai
   )
 }
 
-/**
- * Petite feuille de saisie (remplace les fenêtres natives « prompt »).
- * « onValider » renvoie un message d'erreur à afficher, ou rien si tout s'est bien passé.
- */
 export function FeuilleSaisie(props: {
   titre: string
   libelle: string
@@ -243,7 +231,7 @@ export function useClientComplet() {
 }
 export const useClient = () => useClientComplet().client
 
-/* ---------- Taille d'écran : true à partir de la largeur d'un ordinateur (ou d'une tablette en paysage) ---------- */
+/* ---------- Taille d'écran ---------- */
 export function useEcranLarge(requete = '(min-width: 960px)') {
   const [large, setLarge] = useState(() => window.matchMedia(requete).matches)
   useEffect(() => {
@@ -256,49 +244,164 @@ export function useEcranLarge(requete = '(min-width: 960px)') {
   return large
 }
 
-/* ---------- Compteur : champ numérique avec boutons − et + (saisie rapide, sans clavier) ---------- */
-export function Compteur({ libelle, valeur, onChange, pas, min = 0, max, depart, decimal, erreur }: {
+/* ---------- Compteur : champ numérique avec boutons − et + (appui long + choix du pas) ---------- */
+export function Compteur({
+  libelle,
+  valeur,
+  onChange,
+  pas,
+  choixPas,
+  min = 0,
+  max,
+  depart,
+  decimal,
+  erreur,
+}: {
   libelle: string
   valeur: string
   onChange: (valeur: string) => void
   pas: number
+  choixPas?: number[]
   min?: number
   max?: number
-  depart?: number // valeur proposée au premier « + » quand le champ est vide
+  depart?: number
   decimal?: boolean
   erreur?: string
 }) {
   const id = useId()
+  const [pasActif, setPasActif] = useState(pas)
+  const refValeur = useRef(valeur)
+  refValeur.current = valeur
+  const refOnChange = useRef(onChange)
+  refOnChange.current = onChange
+  const timer = useRef<{ delai?: ReturnType<typeof setTimeout>; intervalle?: ReturnType<typeof setInterval> }>({})
+
+  function arreter() {
+    if (timer.current.delai) clearTimeout(timer.current.delai)
+    if (timer.current.intervalle) clearInterval(timer.current.intervalle)
+    timer.current = {}
+  }
+
+  useEffect(() => arreter, [])
 
   function bouger(delta: number) {
-    const actuel = valeur.trim() === '' ? null : Number(valeur.replace(',', '.'))
+    const v = refValeur.current
+    const actuel = v.trim() === '' ? null : Number(v.replace(',', '.'))
     let suivant: number
     if (actuel === null || Number.isNaN(actuel)) {
       if (delta < 0) return
-      suivant = depart ?? pas
+      suivant = depart ?? Math.abs(delta)
     } else {
       suivant = actuel + delta
     }
     suivant = Math.round(suivant * 100) / 100
     if (suivant < min) suivant = min
     if (max !== undefined && suivant > max) suivant = max
-    onChange(String(suivant).replace('.', ','))
+    const texte = String(suivant).replace('.', ',')
+    refValeur.current = texte
+    refOnChange.current(texte)
+  }
+
+  function demarrerAppui(delta: number) {
+    arreter()
+    bouger(delta)
+    timer.current.delai = setTimeout(() => {
+      timer.current.intervalle = setInterval(() => bouger(delta), 95)
+    }, 350)
   }
 
   return (
     <div className={`champ compteur${erreur ? ' invalide' : ''}`} role="group" aria-labelledby={id}>
-      <span className="champ-libelle" id={id}>{libelle}</span>
+      <div className="compteur-entete">
+        <span className="champ-libelle" id={id}>{libelle}</span>
+        {choixPas && choixPas.length > 1 && (
+          <span className="compteur-pas" role="group" aria-label="Pas d'incrémentation">
+            {choixPas.map(p => (
+              <button
+                key={p}
+                type="button"
+                className={`pas-puce${p === pasActif ? ' actif' : ''}`}
+                onClick={() => setPasActif(p)}
+              >
+                ±{String(p).replace('.', ',')}
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
       <div className="compteur-ligne">
-        <button type="button" aria-label={`Diminuer : ${libelle}`} onClick={() => bouger(-pas)}>−</button>
+        <button
+          type="button"
+          aria-label={`Diminuer : ${libelle}`}
+          onPointerDown={e => { e.preventDefault(); demarrerAppui(-pasActif) }}
+          onPointerUp={arreter}
+          onPointerLeave={arreter}
+          onPointerCancel={arreter}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bouger(-pasActif) } }}
+        >
+          −
+        </button>
         <input inputMode={decimal ? 'decimal' : 'numeric'} value={valeur} onChange={e => onChange(e.target.value)} aria-labelledby={id} />
-        <button type="button" aria-label={`Augmenter : ${libelle}`} onClick={() => bouger(pas)}>+</button>
+        <button
+          type="button"
+          aria-label={`Augmenter : ${libelle}`}
+          onPointerDown={e => { e.preventDefault(); demarrerAppui(pasActif) }}
+          onPointerUp={arreter}
+          onPointerLeave={arreter}
+          onPointerCancel={arreter}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bouger(pasActif) } }}
+        >
+          +
+        </button>
       </div>
       {erreur && <span className="champ-erreur" role="alert">{erreur}</span>}
     </div>
   )
 }
 
-/* ---------- Pastille d'initiales (couleur stable pour un même client) ---------- */
+/* ---------- Note tactile de 1 à 10 (zéro clavier) ---------- */
+export function NoteSur10({
+  libelle,
+  valeur,
+  onChange,
+  inverse = false,
+}: {
+  libelle: string
+  valeur: string
+  onChange: (v: string) => void
+  inverse?: boolean // false : 10 = intense/élevé ; true (ex. Sommeil) : 10 = excellent
+}) {
+  const actuel = valeur ? Number(valeur) : null
+  return (
+    <div className="note-10" role="group" aria-label={libelle}>
+      <div className="note-10-entete">
+        <span className="champ-libelle">{libelle}</span>
+        {actuel !== null && <strong>{actuel}/10</strong>}
+      </div>
+      <div className="note-10-grille">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => {
+          const actif = actuel === n
+          const niveau = inverse
+            ? n >= 7 ? 'bon' : n >= 4 ? 'moyen' : 'haut'
+            : n <= 4 ? 'bon' : n <= 7 ? 'moyen' : 'haut'
+          return (
+            <button
+              key={n}
+              type="button"
+              className={`note-puce ${niveau}${actif ? ' actif' : ''}`}
+              aria-pressed={actif}
+              onClick={() => onChange(actif ? '' : String(n))}
+            >
+              {n}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Pastille d'initiales ---------- */
 export function Avatar({ client, grand }: { client: { id: string; prenom: string; nom: string | null }; grand?: boolean }) {
   const initiales = `${client.prenom.trim()[0] ?? ''}${client.nom?.trim()[0] ?? ''}`.toUpperCase()
   let h = 0

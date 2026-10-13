@@ -38,6 +38,23 @@ export const resumeCardio = (x: { duree_min: number | null; distance_km: number 
     .filter(Boolean)
     .join(' · ')
 
+export function resumeRessentis(s: {
+  ressenti?: number | null
+  diff_muscu?: number | null
+  diff_cardio?: number | null
+  fatigue?: number | null
+  sommeil?: number | null
+}): string {
+  const parties = [
+    s.diff_muscu != null ? `Muscu ${s.diff_muscu}/10` : '',
+    s.diff_cardio != null ? `Cardio ${s.diff_cardio}/10` : '',
+    s.fatigue != null ? `Fatigue ${s.fatigue}/10` : '',
+    s.sommeil != null ? `Sommeil ${s.sommeil}/10` : '',
+  ].filter(Boolean)
+  if (parties.length) return parties.join(' · ')
+  return s.ressenti != null ? `ressenti ${s.ressenti}/10` : ''
+}
+
 /**
  * Renvoie l'étiquette de superset/circuit ('A1', 'A2', 'B1'...) pour chaque ligne,
  * ou null si l'exercice est réalisé seul.
