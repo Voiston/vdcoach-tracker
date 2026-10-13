@@ -9,7 +9,6 @@ import Icone from './icones'
 import { BandeauReseau, Champ, EcranChargement, NavigationCtx, Squelette, useEcranLarge } from './ui'
 import { Verification2FA } from './Auth2FA'
 
-// Chargement à la demande (Code Splitting) pour alléger le bundle initial
 const Profil = lazy(() => import('./Profil'))
 const Bibliotheque = lazy(() => import('./Bibliotheque'))
 const Modeles = lazy(() => import('./Modeles'))
@@ -39,6 +38,9 @@ export default function App() {
   const [sessionExpiree, setSessionExpiree] = useState(false)
   const large = useEcranLarge()
   const [bandeau, setBandeau] = useState('')
+  // Sous-vues sur téléphone pour éviter les longs défilements
+  const [vueAccueilMobile, setVueAccueilMobile] = useState<'liste' | 'tableau'>('liste')
+  const [vueExosMobile, setVueExosMobile] = useState<'biblio' | 'modeles'>('biblio')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -96,6 +98,7 @@ export default function App() {
   }, [JSON.stringify(route)])
 
   function naviguer(r: Route) {
+    if (r.page === 'exercices' && r.recherche) setVueExosMobile('biblio')
     if (JSON.stringify(r) === JSON.stringify(route)) return window.scrollTo({ top: 0, behavior: 'smooth' })
     setRoute(r)
     setBandeau('')
@@ -115,7 +118,17 @@ export default function App() {
     <NavigationCtx.Provider value={o => naviguer({ page: o as 'clients' | 'exercices' | 'facturation' | 'reglages' })}>
       <div className={enSaisie ? 'app en-saisie' : 'app'}>
         <header>
-          <h1>VDCoach</h1>
+          <button
+            type="button"
+            className="logo-accueil"
+            onClick={() => {
+              setVueAccueilMobile('liste')
+              naviguer({ page: 'clients' })
+            }}
+            aria-label="Retour à l'accueil VDCoach"
+          >
+            VDCoach
+          </button>
           <button type="button" className="recherche-rapide" onClick={() => setPalette(true)} aria-label="Recherche rapide (Ctrl + K)">
             <Icone nom="recherche" />
             <span className="libelle">Rechercher…</span>
@@ -129,7 +142,18 @@ export default function App() {
             <Suspense fallback={<Squelette lignes={4} />}>
               {(route.page === 'clients' || route.page === 'client') && (
                 <div className={large ? 'maitre-detail' : undefined}>
-                  {(large || route.page === 'clients') && (
+                  {!large && route.page === 'clients' && (
+                    <div className="segments segments-mobile" role="group" aria-label="Vue clients">
+                      <button type="button" className={vueAccueilMobile === 'liste' ? 'actif' : ''} onClick={() => setVueAccueilMobile('liste')}>
+                        Clients
+                      </button>
+                      <button type="button" className={vueAccueilMobile === 'tableau' ? 'actif' : ''} onClick={() => setVueAccueilMobile('tableau')}>
+                        À suivre & activité
+                      </button>
+                    </div>
+                  )}
+
+                  {(large || (route.page === 'clients' && vueAccueilMobile === 'liste')) && (
                     <Accueil
                       actifId={route.page === 'client' ? route.clientId : undefined}
                       rechargerQuand={`${route.page}-${versionListe}`}
@@ -155,7 +179,7 @@ export default function App() {
                       }}
                     />
                   )}
-                  {large && route.page === 'clients' && (
+                  {route.page === 'clients' && (large || vueAccueilMobile === 'tableau') && (
                     <TableauDeBord
                       onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
                       onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
@@ -163,11 +187,26 @@ export default function App() {
                   )}
                 </div>
               )}
+
               {route.page === 'exercices' && (
-                <div className="page-exercices">
-                  <Bibliotheque key={route.recherche ?? ''} rechercheInitiale={route.recherche} />
-                  <Modeles />
-                </div>
+                <>
+                  {!large && (
+                    <div className="segments segments-mobile" role="group" aria-label="Exercices ou modèles">
+                      <button type="button" className={vueExosMobile === 'biblio' ? 'actif' : ''} onClick={() => setVueExosMobile('biblio')}>
+                        Bibliothèque
+                      </button>
+                      <button type="button" className={vueExosMobile === 'modeles' ? 'actif' : ''} onClick={() => setVueExosMobile('modeles')}>
+                        Modèles de séance
+                      </button>
+                    </div>
+                  )}
+                  <div className="page-exercices">
+                    {(large || vueExosMobile === 'biblio') && (
+                      <Bibliotheque key={route.recherche ?? ''} rechercheInitiale={route.recherche} />
+                    )}
+                    {(large || vueExosMobile === 'modeles') && <Modeles />}
+                  </div>
+                </>
               )}
               {route.page === 'facturation' && <Facturation onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })} />}
               {route.page === 'reglages' && <Reglages />}
@@ -176,7 +215,15 @@ export default function App() {
         </div>
         <nav aria-label="Navigation principale">
           {ONGLETS.map(o => (
-            <button key={o.page} className={o.page === onglet ? 'actif' : ''} aria-current={o.page === onglet ? 'page' : undefined} onClick={() => naviguer({ page: o.page })}>
+            <button
+              key={o.page}
+              className={o.page === onglet ? 'actif' : ''}
+              aria-current={o.page === onglet ? 'page' : undefined}
+              onClick={() => {
+                if (o.page === 'clients') setVueAccueilMobile('liste')
+                naviguer({ page: o.page })
+              }}
+            >
               <Icone nom={o.page} />
               <span>{o.libelle}</span>
             </button>

@@ -15,7 +15,7 @@ type Ligne = {
   series: string
   repetitions: string
   charge_kg: string
-  duree_min: string
+  duree_sec: string
   distance_km: string
   reglage: string
   lie_suivant: boolean
@@ -28,7 +28,8 @@ type Exo = {
   series: number | null
   repetitions: number | null
   charge_kg: number | null
-  duree_min: number | null
+  duree_sec?: number | null
+  duree_min?: number | null
   distance_km: number | null
   reglage?: string | null
   lie_suivant?: boolean | null
@@ -37,13 +38,14 @@ type SeanceRecente = { id: string; date_seance: string; duree_min: number | null
 
 const DUREES_RAPIDES = ['30', '45', '60', '75', '90']
 const PAS_CHARGE = [1, 2.5, 5, 10]
+const PAS_SECONDES = [5, 10, 15, 30, 60]
 
 const vide = (): Ligne => ({
   nom: '',
   series: '',
   repetitions: '',
   charge_kg: '',
-  duree_min: '',
+  duree_sec: '',
   distance_km: '',
   reglage: '',
   lie_suivant: false,
@@ -51,6 +53,9 @@ const vide = (): Ligne => ({
 })
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
 const txt = (n: number | null | undefined) => (n == null ? '' : String(n))
+const secDe = (x: { duree_sec?: number | null; duree_min?: number | null }) =>
+  x.duree_sec ?? (x.duree_min != null ? x.duree_min * 60 : null)
+
 const versLignes = (exos: Exo[]): Ligne[] =>
   exos.length
     ? [...exos]
@@ -60,7 +65,7 @@ const versLignes = (exos: Exo[]): Ligne[] =>
           series: txt(x.series),
           repetitions: txt(x.repetitions),
           charge_kg: txt(x.charge_kg),
-          duree_min: txt(x.duree_min),
+          duree_sec: txt(secDe(x)),
           distance_km: txt(x.distance_km),
           reglage: x.reglage ?? '',
           lie_suivant: Boolean(x.lie_suivant),
@@ -68,7 +73,7 @@ const versLignes = (exos: Exo[]): Ligne[] =>
         }))
     : [vide()]
 
-const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)'
+const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)'
 const PLAFOND_REPS = 12
 const PAS_KG = 2.5
 
@@ -77,29 +82,47 @@ type Dernier = {
   series: number | null
   repetitions: number | null
   charge_kg: number | null
-  duree_min: number | null
+  duree_sec: number | null
   distance_km: number | null
   reglage: string | null
 }
 const cle = (nom: string) => nom.trim().toLowerCase()
 const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&')
 
-function suggestion(d: Dernier): string {
+function suggestion(d: Dernier, cardio: boolean): string {
+  if (cardio) {
+    if (d.duree_sec !== null) return `vise ${d.duree_sec + 5} s`
+    return ''
+  }
   if (d.repetitions === null) return ''
   if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return `essaie ${+(Number(d.charge_kg) + PAS_KG).toFixed(2)} kg`
   return `vise ${d.repetitions + 1} reps${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
 }
 
-function proposition(d: Dernier) {
+function proposition(d: Dernier, cardio: boolean) {
+  if (cardio) {
+    if (d.duree_sec === null) return null
+    return { series: d.series ?? 3, repetitions: null, charge_kg: null, duree_sec: d.duree_sec + 5 }
+  }
   if (d.repetitions === null) return null
-  if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return { repetitions: d.repetitions, charge_kg: Number(d.charge_kg) + PAS_KG }
-  return { repetitions: d.repetitions + 1, charge_kg: d.charge_kg }
+  if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) {
+    return { series: d.series, repetitions: d.repetitions, charge_kg: Number(d.charge_kg) + PAS_KG, duree_sec: null }
+  }
+  return { series: d.series, repetitions: d.repetitions + 1, charge_kg: d.charge_kg, duree_sec: null }
 }
 
 function DerniereFois({ d, cardio }: { d: Dernier; cardio: boolean }) {
   const date = dateLocale(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-  if (cardio) return <p className="meta">Dernière fois ({date}) : {resumeCardio(d) || '?'}{d.reglage ? ` · ⚙ ${d.reglage}` : ''}</p>
-  const conseil = suggestion(d)
+  const conseil = suggestion(d, cardio)
+  if (cardio) {
+    return (
+      <p className="meta">
+        Dernière fois ({date}) : {resumeCardio(d) || '?'}
+        {conseil ? ` · ${conseil}` : ''}
+        {d.reglage ? ` · ⚙ ${d.reglage}` : ''}
+      </p>
+    )
+  }
   return (
     <p className="meta">
       Dernière fois ({date}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
@@ -130,7 +153,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const zonesSensibles = client.zones_sensibles ?? []
   const notifier = useNotifier()
   const [feuilleModele, setFeuilleModele] = useState(false)
-  // choix : 'ajout' (sélection multiple) ou indice d'une ligne existante à remplacer
   const [choix, setChoix] = useState<number | 'ajout' | null>(null)
   const [reglagesOuverts, setReglagesOuverts] = useState<Record<number, boolean>>({})
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
@@ -156,24 +178,24 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
   const valeurs = (l: Ligne) => ({
+    series: num(l.series),
     ...(estCardio(l.nom)
-      ? { series: null, repetitions: null, charge_kg: null, duree_min: num(l.duree_min), distance_km: num(l.distance_km) }
-      : { series: num(l.series), repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_min: null, distance_km: null }),
+      ? { repetitions: null, charge_kg: null, duree_sec: num(l.duree_sec), duree_min: null, distance_km: num(l.distance_km) }
+      : { repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_sec: null, duree_min: null, distance_km: null }),
     reglage: l.reglage.trim() || null,
     lie_suivant: l.lie_suivant,
   })
 
-  // Construit une ligne pré-remplie automatiquement avec la dernière performance du client (ou 3×10 par défaut)
   function creerLignePreRemplie(nom: string): Ligne {
     const d = derniers[cle(nom)]
     const cardio = estCardio(nom)
     if (d) {
       return {
         nom,
-        series: cardio ? '' : txt(d.series ?? 3),
+        series: txt(d.series ?? 3),
         repetitions: cardio ? '' : txt(d.repetitions ?? 10),
         charge_kg: cardio ? '' : txt(d.charge_kg),
-        duree_min: cardio ? txt(d.duree_min ?? 20) : '',
+        duree_sec: cardio ? txt(d.duree_sec ?? 30) : '',
         distance_km: cardio ? txt(d.distance_km) : '',
         reglage: d.reglage ?? '',
         lie_suivant: false,
@@ -183,9 +205,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     return {
       ...vide(),
       nom,
-      series: cardio ? '' : '3',
+      series: '3',
       repetitions: cardio ? '' : '10',
-      duree_min: cardio ? '20' : '',
+      duree_sec: cardio ? '30' : '',
     }
   }
 
@@ -230,18 +252,19 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!id) return
     const { data, error } = await supabase
       .from('modeles')
-      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
+      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
-    // Complète le modèle avec les dernières charges et réglages connus du client
     const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => {
       const d = derniers[cle(l.nom)]
+      const cardio = estCardio(l.nom)
       return {
         ...l,
-        series: l.series || txt(d?.series ?? (estCardio(l.nom) ? null : 3)),
-        repetitions: l.repetitions || txt(d?.repetitions ?? (estCardio(l.nom) ? null : 10)),
-        charge_kg: l.charge_kg || txt(d?.charge_kg),
+        series: l.series || txt(d?.series ?? 3),
+        repetitions: cardio ? '' : l.repetitions || txt(d?.repetitions ?? 10),
+        charge_kg: cardio ? '' : l.charge_kg || txt(d?.charge_kg),
+        duree_sec: cardio ? l.duree_sec || txt(d?.duree_sec ?? 30) : '',
         reglage: l.reglage || d?.reglage || '',
       }
     })
@@ -279,7 +302,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .then(({ data }) => setBiblio(Object.fromEntries((data ?? []).map(x => [cle(x.nom), x as Fiche]))))
   }, [])
 
-  // Charge l'historique récent du client (pour pré-remplir les exercices ET proposer les 3 dernières séances en 1 tap)
   useEffect(() => {
     if (!clientId) return
     supabase
@@ -304,7 +326,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 series: x.series,
                 repetitions: x.repetitions,
                 charge_kg: x.charge_kg,
-                duree_min: x.duree_min,
+                duree_sec: secDe(x),
                 distance_km: x.distance_km,
                 reglage: x.reglage ?? null,
               }
@@ -377,7 +399,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setFatigue(brouillon.fatigue ?? '')
     setSommeil(brouillon.sommeil ?? '')
     setNotes(brouillon.notes)
-    setLignes(brouillon.lignes.length ? brouillon.lignes.map(l => ({ ...vide(), ...l })) : [vide()])
+    setLignes(
+      brouillon.lignes.length
+        ? brouillon.lignes.map(l => ({
+            ...vide(),
+            ...l,
+            duree_sec: l.duree_sec ?? (l.duree_min ? String(Number(l.duree_min) * 60) : ''),
+          }))
+        : [vide()],
+    )
     setBrouillon(null)
   }
 
@@ -442,7 +472,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               series: txt(d.series),
               repetitions: txt(d.repetitions),
               charge_kg: txt(d.charge_kg),
-              duree_min: txt(d.duree_min),
+              duree_sec: txt(d.duree_sec),
               distance_km: txt(d.distance_km),
               reglage: x.reglage.trim() || d.reglage || '',
             }
@@ -452,17 +482,19 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   function progresser(i: number) {
+    const cardio = estCardio(lignes[i].nom)
     const d = derniers[cle(lignes[i].nom)]
-    const p = d && proposition(d)
+    const p = d && proposition(d, cardio)
     if (!d || !p) return
     setLignes(l =>
       l.map((x, j) =>
         j === i
           ? {
               ...x,
-              series: txt(d.series),
-              repetitions: txt(p.repetitions),
-              charge_kg: txt(p.charge_kg),
+              series: txt(p.series),
+              repetitions: cardio ? '' : txt(p.repetitions),
+              charge_kg: cardio ? '' : txt(p.charge_kg),
+              duree_sec: cardio ? txt(p.duree_sec) : '',
               reglage: x.reglage.trim() || d.reglage || '',
             }
           : x,
@@ -489,7 +521,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   async function creerSeancesPartagees(
     sessionId: string,
-    exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null; reglage: string | null; lie_suivant: boolean }[],
+    exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_sec: number | null; duree_min: number | null; distance_km: number | null; reglage: string | null; lie_suivant: boolean }[],
   ): Promise<string[]> {
     const echecNoms = invites.map(prenomDe)
     const { data, error } = await supabase
@@ -505,6 +537,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         series: x.series,
         repetitions: x.repetitions,
         charge_kg: copierCharges ? x.charge_kg : null,
+        duree_sec: x.duree_sec,
         duree_min: x.duree_min,
         distance_km: x.distance_km,
         reglage: copierCharges ? x.reglage : null,
@@ -606,16 +639,16 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const invalide =
     verifier(duree, REGLES.duree) ||
     lignes.some(l =>
-      estCardio(l.nom)
-        ? verifier(l.duree_min, REGLES.duree) || verifier(l.distance_km, REGLES.distance)
-        : verifier(l.series, REGLES.series) || verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge),
+      verifier(l.series, REGLES.series) ||
+      (estCardio(l.nom)
+        ? verifier(l.duree_sec, REGLES.duree_sec) || verifier(l.distance_km, REGLES.distance)
+        : verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge)),
     )
 
   return (
     <>
       <Chronometre />
       <form onSubmit={enregistrer}>
-        <h3 className="titre-seance">{seanceId ? 'Modifier la séance' : 'Nouvelle séance'}</h3>
         {brouillon && (
           <div className="brouillon" role="status">
             <p>
@@ -696,7 +729,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 <span className="meta">Reprendre :</span>
                 {recentes.map((s, idx) => (
                   <button key={s.id} type="button" className="puce-choix" onClick={() => reprendreSeance(s)}>
-                    ↺ {idx === 0 ? `Dernière (${courte(s.date_seance)})` : courte(s.date_seance)} ({s.exercices.length} exos)
+                    ↺ {idx === 0 ? `Dernière (${courte(s.date_seance)})` : courte(s.date_seance)} ({s.exercices.length})
                   </button>
                 ))}
               </div>
@@ -714,14 +747,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           const dernier = derniers[cle(l.nom)]
           const fiche = biblio[cle(l.nom)]
           const cardio = estCardio(l.nom)
-          const prop = dernier ? proposition(dernier) : null
+          const prop = dernier ? proposition(dernier, cardio) : null
           const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
           const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
 
-          // Mode replié (compact) quand l'exercice est coché ✓
           if (l.valide && l.nom.trim()) {
             const resumeCompact = cardio
-              ? resumeCardio({ duree_min: num(l.duree_min), distance_km: num(l.distance_km) })
+              ? resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) })
               : [
                   l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '',
                   l.charge_kg ? `@ ${l.charge_kg} kg` : '',
@@ -743,7 +775,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     {resumeCompact && <span> — {resumeCompact}</span>}
                     {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
                   </button>
-                  <button type="button" className="lien danger" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                  <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
                 </div>
               </div>
             )
@@ -772,18 +804,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 >
                   {l.nom.trim() || 'Choisir un exercice…'}
                 </button>
-                <div className="exercice-outils">
-                  {i > 0 && (
-                    <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
-                  )}
-                  {i < lignes.length - 1 && (
-                    <button type="button" className="lien outil" aria-label="Descendre cet exercice" title="Descendre" onClick={() => deplacer(i, 1)}>↓</button>
-                  )}
-                  {l.nom.trim() && (
-                    <button type="button" className="lien outil" aria-label="Dupliquer cet exercice" title="Dupliquer (ex. série dégressive)" onClick={() => dupliquer(i)}>⎘</button>
-                  )}
-                  <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
-                </div>
+                <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
               </div>
 
               {sollicitesSensibles.length > 0 && (
@@ -798,15 +819,39 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   <DerniereFois d={dernier} cardio={cardio} />
                   <div className="exercice-actions">
                     <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Dernière fois</button>
-                    {prop && !cardio && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
+                    {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
                   </div>
                 </div>
               )}
 
               {cardio ? (
-                <div className="compteurs deux">
-                  <Compteur libelle="Durée (min)" valeur={l.duree_min} onChange={v => maj(i, 'duree_min', v)} pas={5} depart={dernier?.duree_min ?? 20} erreur={verifier(l.duree_min, REGLES.duree)} />
-                  <Compteur libelle="Distance (km)" valeur={l.distance_km} onChange={v => maj(i, 'distance_km', v)} pas={0.5} depart={dernier?.distance_km ?? 1} decimal erreur={verifier(l.distance_km, REGLES.distance)} />
+                <div className="compteurs">
+                  <Compteur
+                    libelle="Séries"
+                    valeur={l.series}
+                    onChange={v => maj(i, 'series', v)}
+                    pas={1}
+                    depart={dernier?.series ?? 3}
+                    erreur={verifier(l.series, REGLES.series)}
+                  />
+                  <Compteur
+                    libelle="Temps (sec)"
+                    valeur={l.duree_sec}
+                    onChange={v => maj(i, 'duree_sec', v)}
+                    pas={15}
+                    choixPas={PAS_SECONDES}
+                    depart={dernier?.duree_sec ?? 30}
+                    erreur={verifier(l.duree_sec, REGLES.duree_sec)}
+                  />
+                  <Compteur
+                    libelle="Distance (km)"
+                    valeur={l.distance_km}
+                    onChange={v => maj(i, 'distance_km', v)}
+                    pas={0.5}
+                    depart={dernier?.distance_km ?? 1}
+                    decimal
+                    erreur={verifier(l.distance_km, REGLES.distance)}
+                  />
                 </div>
               ) : (
                 <div className="compteurs">
@@ -844,7 +889,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     className="lien superset-lien"
                     onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}
                   >
-                    + ⚙ Mémo réglage
+                    + ⚙ Réglage
                   </button>
                 )}
                 {i < lignes.length - 1 && (
@@ -854,9 +899,20 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     aria-pressed={l.lie_suivant}
                     onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
                   >
-                    {l.lie_suivant ? '⛓ Lié au suivant (Superset)' : '+ Lier au suivant (Superset)'}
+                    {l.lie_suivant ? '⛓ Superset actif' : '+ Superset'}
                   </button>
                 )}
+                <div className="exercice-outils">
+                  {i > 0 && (
+                    <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
+                  )}
+                  {i < lignes.length - 1 && (
+                    <button type="button" className="lien outil" aria-label="Descendre cet exercice" title="Descendre" onClick={() => deplacer(i, 1)}>↓</button>
+                  )}
+                  {l.nom.trim() && (
+                    <button type="button" className="lien outil" aria-label="Dupliquer cet exercice" title="Dupliquer" onClick={() => dupliquer(i)}>⎘</button>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -889,7 +945,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
             <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
           </span>
           <button type="submit" disabled={envoi || Boolean(invalide)}>
-            {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}
+            {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : 'Enregistrer la séance'}
           </button>
         </div>
       </form>

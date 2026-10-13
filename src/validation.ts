@@ -14,6 +14,7 @@ export function verifier(valeur: string, r: Regle = {}): string {
 // Limites cohérentes avec la base de données et avec la réalité d'une séance.
 export const REGLES = {
   duree: { min: 1, max: 600, entier: true },
+  duree_sec: { min: 1, max: 36000, entier: true },
   ressenti: { min: 1, max: 10, entier: true },
   series: { min: 1, max: 30, entier: true },
   repetitions: { min: 1, max: 300, entier: true },

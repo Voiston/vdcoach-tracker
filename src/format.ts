@@ -33,10 +33,22 @@ export function ilYa(d: string, court = false): string {
 
 export const nb = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 
-export const resumeCardio = (x: { duree_min: number | null; distance_km: number | null }) =>
-  [x.duree_min !== null ? `${x.duree_min} min` : '', x.distance_km !== null ? `${x.distance_km} km` : '']
-    .filter(Boolean)
-    .join(' · ')
+export function resumeCardio(x: {
+  series?: number | null
+  duree_sec?: number | null
+  duree_min?: number | null
+  distance_km?: number | null
+}): string {
+  const s = x.series && x.series > 0 ? `${x.series}×` : ''
+  const temps =
+    x.duree_sec != null
+      ? `${s}${x.duree_sec} s`
+      : x.duree_min != null
+        ? `${s}${x.duree_min} min`
+        : ''
+  const dist = x.distance_km != null ? `${ !temps && s ? s : '' }${x.distance_km} km` : ''
+  return [temps, dist].filter(Boolean).join(' · ')
+}
 
 export function resumeRessentis(s: {
   ressenti?: number | null

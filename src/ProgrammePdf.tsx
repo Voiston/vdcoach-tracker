@@ -11,6 +11,7 @@ export type LigneProgramme = {
   series?: number | null
   repetitions?: number | null
   charge_kg?: number | null
+  duree_sec?: number | null
   duree_min?: number | null
   distance_km?: number | null
   reglage?: string | null
@@ -61,7 +62,7 @@ function DocumentProgramme({
           {lignes.map((l, i) => {
             const info = biblio[cle(l.nom)]
             const video = lienSur(info?.video_url)
-            const cardio = resumeCardio({ duree_min: l.duree_min ?? null, distance_km: l.distance_km ?? null })
+            const cardio = resumeCardio(l)
             const dosage = cardio
               ? cardio
               : [

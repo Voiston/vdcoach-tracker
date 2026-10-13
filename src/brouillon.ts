@@ -17,6 +17,7 @@ export type Brouillon = {
     series: string
     repetitions: string
     charge_kg: string
+    duree_sec?: string
     duree_min?: string
     distance_km?: string
     reglage?: string

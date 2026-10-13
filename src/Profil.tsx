@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
+import { MUSCLES } from './definitions'
 import { messageErreur } from './erreurs'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { Avatar, ClientCtx, ErreurChargement, Squelette } from './ui'
@@ -16,7 +17,7 @@ const RUBRIQUES: { cle: Exclude<Rubrique, 'seance'>; libelle: string }[] = [
   { cle: 'apercu', libelle: 'Aperçu' },
   { cle: 'seances', libelle: 'Séances' },
   { cle: 'suivi', libelle: 'Suivi' },
-  { cle: 'objectifs', libelle: 'Objectifs & bilans' },
+  { cle: 'objectifs', libelle: 'Objectifs' },
   { cle: 'fiche', libelle: 'Fiche' },
 ]
 
@@ -45,7 +46,6 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
     recharger()
   }, [clientId])
 
-  // Nombre de séances réalisées ce mois-ci (recalculé quand on change de rubrique, par exemple après un enregistrement)
   useEffect(() => {
     if (client) resumeMois(client).then(setResume)
   }, [client?.id, client?.groupe_facturation, rubrique])
@@ -54,44 +54,85 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   if (!client) return <Squelette lignes={3} />
 
   const saisie = rubrique === 'seance'
+  const zones = (client.zones_sensibles ?? []).map(z => MUSCLES[z] ?? z)
 
   return (
     <ClientCtx.Provider value={{ client, recharger }}>
       <div className="profil">
-      <button type="button" className={saisie ? 'lien retour' : 'lien retour vers-liste'} onClick={saisie ? () => onRubrique('seances') : onRetour}>
-        {saisie ? '← Séances' : '← Clients'}
-      </button>
-      <div className="profil-entete">
-        <h2><Avatar client={client} grand />{client.prenom} {client.nom}</h2>
-        {!client.actif && <p className="meta">Client archivé</p>}
-        {resume && (
-          <p className="meta">
-            {resume.n} séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
-            {resume.avec.length > 0 && ` · facturées avec ${resume.avec.join(' & ')}`}
-          </p>
-        )}
-        {client.points_attention && <p className="attention">⚠ {client.points_attention}</p>}
-        {!saisie && <button type="button" onClick={() => onRubrique('seance')}>+ Nouvelle séance</button>}
-      </div>
+        <div className="profil-barre-mobile">
+          <button
+            type="button"
+            className={saisie ? 'lien retour' : 'lien retour vers-liste'}
+            onClick={saisie ? () => onRubrique('seances') : onRetour}
+          >
+            {saisie ? '← Annuler' : '← Clients'}
+          </button>
+          {saisie && (
+            <span className="profil-mini-identite">
+              <Avatar client={client} />
+              <strong>{client.prenom} {client.nom}</strong>
+            </span>
+          )}
+        </div>
 
-      {saisie ? (
-        <NouvelleSeance key={seanceId ?? 'nouvelle'} seanceId={seanceId} onSaved={onSaved} />
-      ) : (
-        <>
-          <div className="rubriques" role="group" aria-label="Rubriques du client">
-            {RUBRIQUES.map(r => (
-              <button key={r.cle} type="button" className={r.cle === rubrique ? 'actif' : ''} aria-pressed={r.cle === rubrique} onClick={() => onRubrique(r.cle)}>
-                {r.libelle}
-              </button>
-            ))}
+        {!saisie ? (
+          <div className="profil-entete">
+            <div className="profil-identite">
+              <h2><Avatar client={client} grand /><span>{client.prenom} {client.nom}</span></h2>
+              {!client.actif && <p className="meta">Client archivé</p>}
+              {resume && (
+                <p className="meta">
+                  {resume.n} séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
+                  {resume.avec.length > 0 && ` · facturées avec ${resume.avec.join(' & ')}`}
+                </p>
+              )}
+            </div>
+            <button type="button" className="btn-nouvelle-seance" onClick={() => onRubrique('seance')}>
+              + Séance
+            </button>
+            {(client.points_attention || zones.length > 0) && (
+              <p className="attention">
+                ⚠ {client.points_attention}
+                {client.points_attention && zones.length > 0 ? ' · ' : ''}
+                {zones.length > 0 && <strong>Zones à ménager : {zones.join(', ')}</strong>}
+              </p>
+            )}
           </div>
-          {rubrique === 'apercu' && <Apercu onRubrique={onRubrique} />}
-          {rubrique === 'seances' && <Seances onEdit={id => onRubrique('seance', id)} onNouvelle={() => onRubrique('seance')} />}
-          {rubrique === 'suivi' && <SuiviHub key="suivi" vues={['progression', 'muscles']} />}
-          {rubrique === 'objectifs' && <SuiviHub key="objectifs" vues={['objectifs', 'bilans']} />}
-          {rubrique === 'fiche' && <Fiche onRetour={onRetour} />}
-        </>
-      )}
+        ) : (
+          (client.points_attention || zones.length > 0) && (
+            <p className="attention" style={{ marginBottom: '.75rem' }}>
+              ⚠ {client.points_attention}
+              {client.points_attention && zones.length > 0 ? ' · ' : ''}
+              {zones.length > 0 && <strong>Zones : {zones.join(', ')}</strong>}
+            </p>
+          )
+        )}
+
+        {saisie ? (
+          <NouvelleSeance key={seanceId ?? 'nouvelle'} seanceId={seanceId} onSaved={onSaved} />
+        ) : (
+          <>
+            <div className="rubriques" role="tablist" aria-label="Rubriques du client">
+              {RUBRIQUES.map(r => (
+                <button
+                  key={r.cle}
+                  type="button"
+                  role="tab"
+                  aria-selected={r.cle === rubrique}
+                  className={r.cle === rubrique ? 'actif' : ''}
+                  onClick={() => onRubrique(r.cle)}
+                >
+                  {r.libelle}
+                </button>
+              ))}
+            </div>
+            {rubrique === 'apercu' && <Apercu onRubrique={onRubrique} />}
+            {rubrique === 'seances' && <Seances onEdit={id => onRubrique('seance', id)} onNouvelle={() => onRubrique('seance')} />}
+            {rubrique === 'suivi' && <SuiviHub key="suivi" vues={['progression', 'muscles']} />}
+            {rubrique === 'objectifs' && <SuiviHub key="objectifs" vues={['objectifs', 'bilans']} />}
+            {rubrique === 'fiche' && <Fiche onRetour={onRetour} />}
+          </>
+        )}
       </div>
     </ClientCtx.Provider>
   )

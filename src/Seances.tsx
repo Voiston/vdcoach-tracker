@@ -12,6 +12,7 @@ type Exercice = {
   series: number | null
   repetitions: number | null
   charge_kg: number | null
+  duree_sec?: number | null
   duree_min: number | null
   distance_km: number | null
   reglage?: string | null
@@ -48,7 +49,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     if (depuis === 0) setPret(false)
     const { data, error } = await supabase
       .from('seances')
-      .select('id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
+      .select('id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
       .eq('client_id', client.id)
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
@@ -99,16 +100,19 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
               <div>
                 <strong>{dateFr(s.date_seance, true)}</strong>
                 {infosMeta && <p className="meta">{infosMeta}</p>}
-                {exosTries.map((x, idx) => (
-                  <p key={x.id}>
-                    {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
-                    {x.nom}
-                    {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
-                    {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
-                    {resumeCardio(x) ? ` — ${resumeCardio(x)}` : ''}
-                    {x.reglage && <span className="meta"> ({x.reglage})</span>}
-                  </p>
-                ))}
+                {exosTries.map((x, idx) => {
+                  const cardioTxt = resumeCardio(x)
+                  return (
+                    <p key={x.id}>
+                      {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                      {x.nom}
+                      {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
+                      {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
+                      {cardioTxt ? ` — ${cardioTxt}` : ''}
+                      {x.reglage && <span className="meta"> ({x.reglage})</span>}
+                    </p>
+                  )
+                })}
                 {s.notes && <p className="meta">{s.notes}</p>}
                 <div className="ligne" style={{ flexWrap: 'wrap', marginTop: '.35rem' }}>
                   <button className="lien" onClick={() => onEdit(s.id)}>Modifier</button>

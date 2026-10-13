@@ -1,18 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
+import { aujourdhui, courte, ilYa } from './format'
+import { Champ, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
 import './suivi.css'
 import { TYPES } from './definitions'
 import Courbe, { type Point } from './Courbe'
 
-const MAX_REPS_1RM = 12 // au-delà, la formule d'Epley est peu fiable : on ignore la série
+const MAX_REPS_1RM = 12
 
 type Mesure = { id: string; date_mesure: string; type: string; valeur: number }
-type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null; charge_kg: number | null; repetitions: number | null; duree_min: number | null; distance_km: number | null }[] }
+type SeanceExo = {
+  date_seance: string
+  exercices: {
+    nom: string
+    series: number | null
+    charge_kg: number | null
+    repetitions: number | null
+    duree_sec?: number | null
+    duree_min: number | null
+    distance_km: number | null
+  }[]
+}
 
-// Marque les points qui battent tous les précédents (le premier point n'est pas un record)
 function marquerRecords(points: Point[]): Point[] {
   let max = -Infinity
   return points.map((p, i) => {
@@ -22,9 +33,6 @@ function marquerRecords(points: Point[]): Point[] {
   })
 }
 
-const courte = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' })
-
-// Lundi de la semaine d'une date (AAAA-MM-JJ), et lundi suivant : pour cumuler le cardio par semaine
 function lundi(d: string) {
   const x = new Date(`${d}T12:00:00`)
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7))
@@ -36,9 +44,18 @@ function semaineSuivante(d: string) {
   return x.toLocaleDateString('sv-SE')
 }
 
-function ilYa(d: string) {
-  const jours = Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
-  return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} j`
+const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
+  x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
+    ? null
+    : x.repetitions === 1 ? Number(x.charge_kg) : Number(x.charge_kg) * (1 + x.repetitions / 30)
+const arrondi = (n: number) => Math.round(n * 10) / 10
+
+// Durée totale d'un exercice cardio en minutes (séries × secondes / 60, ou anciennes minutes)
+function minutesCardioExo(x: { series: number | null; duree_sec?: number | null; duree_min: number | null }): number {
+  const nbSeries = x.series ?? 1
+  if (x.duree_sec != null) return (nbSeries * Number(x.duree_sec)) / 60
+  if (x.duree_min != null) return nbSeries * Number(x.duree_min)
+  return 0
 }
 
 export default function Suivi() {
@@ -49,19 +66,18 @@ export default function Suivi() {
   const [objectifs, setObjectifs] = useState<{ source: string; reference: string; valeur_cible: number }[]>([])
   const [type, setType] = useState('poids')
   const [valeur, setValeur] = useState('')
-  const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE'))
+  const [date, setDate] = useState(aujourdhui())
   const [exo, setExo] = useState('')
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
-  const aller = useAller()
   const [masquees, setMasquees] = useState<string[]>([])
 
   async function charger() {
     if (!clientId) return
     const [m, s, o] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
-      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions, duree_min, distance_km)').eq('client_id', clientId).order('date_seance'),
+      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions, duree_sec, duree_min, distance_km)').eq('client_id', clientId).order('date_seance'),
       supabase.from('objectifs').select('source, reference, valeur_cible').eq('client_id', clientId).order('created_at'),
     ])
     setPret(true)
@@ -105,62 +121,69 @@ export default function Suivi() {
     })
   }
 
-  // Exercices pour lesquels une charge a été saisie, et meilleure charge par séance
-  const noms = [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort()
+  const noms = useMemo(
+    () => [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort(),
+    [seances],
+  )
   const exoChoisi = noms.includes(exo) ? exo : noms[0] ?? ''
-  const pointsCharge: Point[] = seances.flatMap(s => {
-    const charges = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null).map(x => Number(x.charge_kg))
-    return charges.length ? [{ date: s.date_seance, valeur: Math.max(...charges) }] : []
-  })
+
+  const { pointsCharge, points1rm } = useMemo(() => {
+    const charge: Point[] = seances.flatMap(s => {
+      const c = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null).map(x => Number(x.charge_kg))
+      return c.length ? [{ date: s.date_seance, valeur: Math.max(...c) }] : []
+    })
+    const rm: Point[] = seances.flatMap(s => {
+      const v = s.exercices.filter(x => x.nom === exoChoisi).map(e1rm).filter((n): n is number => n !== null)
+      return v.length ? [{ date: s.date_seance, valeur: arrondi(Math.max(...v)) }] : []
+    })
+    return { pointsCharge: marquerRecords(charge), points1rm: marquerRecords(rm) }
+  }, [seances, exoChoisi])
+
+  const { records, pointsCardio, minutes30, km30, ceMois } = useMemo(() => {
+    const moisCourant = aujourdhui().slice(0, 7)
+    const nbCeMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
+
+    const parSemaine = new Map<string, number>()
+    for (const s of seances)
+      for (const x of s.exercices) {
+        const min = minutesCardioExo(x)
+        if (min > 0) parSemaine.set(lundi(s.date_seance), (parSemaine.get(lundi(s.date_seance)) ?? 0) + min)
+      }
+    const semainesCardio = [...parSemaine.keys()].sort()
+    const ptsCardio: Point[] = []
+    if (semainesCardio.length)
+      for (let d = semainesCardio[0]; d <= semainesCardio[semainesCardio.length - 1]; d = semaineSuivante(d))
+        ptsCardio.push({ date: d, valeur: arrondi(parSemaine.get(d) ?? 0) })
+
+    const depuis30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
+    const cardio30 = seances.filter(s => s.date_seance >= depuis30).flatMap(s => s.exercices)
+    const min30 = Math.round(cardio30.reduce((total, x) => total + minutesCardioExo(x), 0))
+    const k30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0) * (x.series ?? 1), 0)
+
+    const recs = noms.map(nom => {
+      let charge = { valeur: 0, date: '' }
+      let force = { valeur: 0, date: '' }
+      for (const s of seances)
+        for (const x of s.exercices) {
+          if (x.nom !== nom) continue
+          if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) charge = { valeur: Number(x.charge_kg), date: s.date_seance }
+          const f = e1rm(x)
+          if (f !== null && f > force.valeur) force = { valeur: arrondi(f), date: s.date_seance }
+        }
+      return { nom, charge, force }
+    })
+
+    return { records: recs, pointsCardio: ptsCardio, minutes30: min30, km30: k30, ceMois: nbCeMois }
+  }, [seances, noms])
+
   const mesuresType = mesures.filter(m => m.type === type)
   const pointsMesure = mesuresType.map(m => ({ date: m.date_mesure, valeur: Number(m.valeur) }))
-  // Objectif chiffré le plus récent lié à l'exercice ou à la mesure affichés (ligne d'objectif sur la courbe)
   const cibleDe = (source: string, correspond: (reference: string) => boolean) => {
     const o = [...objectifs].reverse().find(x => x.source === source && correspond(x.reference))
     return o ? { valeur: Number(o.valeur_cible) } : undefined
   }
   const cibleCharge = cibleDe('charge', r => r.trim().toLowerCase() === exoChoisi.trim().toLowerCase())
   const cibleMesure = cibleDe('mesure', r => r === type)
-  const moisCourant = new Date().toLocaleDateString('sv-SE').slice(0, 7)
-  const ceMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
-
-  // Cardio : minutes cumulées par semaine (une semaine sans cardio entre deux semaines actives compte pour 0)
-  const parSemaine = new Map<string, number>()
-  for (const s of seances)
-    for (const x of s.exercices)
-      if (x.duree_min !== null) parSemaine.set(lundi(s.date_seance), (parSemaine.get(lundi(s.date_seance)) ?? 0) + Number(x.duree_min))
-  const semainesCardio = [...parSemaine.keys()].sort()
-  const pointsCardio: Point[] = []
-  if (semainesCardio.length)
-    for (let d = semainesCardio[0]; d <= semainesCardio[semainesCardio.length - 1]; d = semaineSuivante(d))
-      pointsCardio.push({ date: d, valeur: parSemaine.get(d) ?? 0 })
-  const depuis30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
-  const cardio30 = seances.filter(s => s.date_seance >= depuis30).flatMap(s => s.exercices)
-  const minutes30 = cardio30.reduce((total, x) => total + Number(x.duree_min ?? 0), 0)
-  const km30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0), 0)
-
-  // 1RM estimée (formule d'Epley) pour une série donnée
-  const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
-    x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
-      ? null
-      : x.repetitions === 1 ? Number(x.charge_kg) : Number(x.charge_kg) * (1 + x.repetitions / 30)
-  const arrondi = (n: number) => Math.round(n * 10) / 10
-  const points1rm: Point[] = seances.flatMap(s => {
-    const v = s.exercices.filter(x => x.nom === exoChoisi).map(e1rm).filter((n): n is number => n !== null)
-    return v.length ? [{ date: s.date_seance, valeur: arrondi(Math.max(...v)) }] : []
-  })
-  const records = noms.map(nom => {
-    let charge = { valeur: 0, date: '' }
-    let force = { valeur: 0, date: '' }
-    for (const s of seances)
-      for (const x of s.exercices) {
-        if (x.nom !== nom) continue
-        if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) charge = { valeur: Number(x.charge_kg), date: s.date_seance }
-        const f = e1rm(x)
-        if (f !== null && f > force.valeur) force = { valeur: arrondi(f), date: s.date_seance }
-      }
-    return { nom, charge, force }
-  })
 
   return (
     <section>
@@ -168,81 +191,81 @@ export default function Suivi() {
 
       {!pret && <Squelette lignes={3} />}
       <div hidden={!pret}>
-      <div className="stats">
-        <div><strong>{seances.length}</strong><span>séances</span></div>
-        <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
-        <div><strong className="texte" title={seances.length ? courte(seances[seances.length - 1].date_seance) : undefined}>{seances.length ? ilYa(seances[seances.length - 1].date_seance) : '—'}</strong><span>dernière séance</span></div>
-      </div>
-
-      <div className="deux-colonnes">
-      <div>
-      <h3>Charges</h3>
-      {noms.length ? (
-        <>
-          <select aria-label="Exercice" value={exoChoisi} onChange={e => setExo(e.target.value)}>
-            {noms.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <h4 className="sous-titre">Charge maximale par séance</h4>
-          <Courbe nom="Charge maximale" points={marquerRecords(pointsCharge)} unite="kg" cible={cibleCharge} />
-          <h4 className="sous-titre">Force maximale estimée (1RM)</h4>
-          <p className="meta">Formule d’Epley, séries de 12 répétitions maximum.</p>
-          <Courbe nom="Force maximale estimée" points={marquerRecords(points1rm)} unite="kg" />
-        </>
-      ) : (
-        <p className="meta">Aucune charge enregistrée pour ce client.</p>
-      )}
-
-      <h3>Records</h3>
-      {records.length ? (
-        <ul className="liste">
-          {records.map(r => (
-            <li key={r.nom}>
-              <div>
-                <strong>{r.nom}</strong>
-                <p>🏆 {r.charge.valeur} kg <span className="meta">({courte(r.charge.date)})</span></p>
-                {r.force.valeur > 0 && <p className="meta">1RM estimée : {r.force.valeur} kg</p>}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="meta">Aucun record pour l'instant.</p>
-      )}
-
-      {pointsCardio.length > 0 && (
-        <>
-          <h3>Cardio</h3>
-          <p className="meta">
-            Sur 30 jours : {minutes30} min{km30 > 0 ? ` · ${km30.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km` : ''}. Minutes cumulées par semaine, chaque point est placé au lundi de la semaine.
-          </p>
-          <Courbe nom="Cardio" points={pointsCardio} unite="min" />
-        </>
-      )}
-
-      </div>
-      <div>
-      <h3>Mesures</h3>
-      <select aria-label="Type de mesure" value={type} onChange={e => setType(e.target.value)}>
-        {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-      </select>
-      <Courbe nom={TYPES[type].label} points={pointsMesure} unite={TYPES[type].unite} cible={cibleMesure} />
-      <form onSubmit={e => lancer(() => ajouter(e))}>
-        <div className="ligne">
-          <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
-          <Champ libelle={`Valeur (${TYPES[type].unite})`} erreur={verifier(valeur, REGLES.mesure)}><input inputMode="decimal" value={valeur} onChange={e => setValeur(e.target.value)} /></Champ>
+        <div className="stats">
+          <div><strong>{seances.length}</strong><span>séances</span></div>
+          <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
+          <div><strong className="texte" title={seances.length ? courte(seances[seances.length - 1].date_seance) : undefined}>{seances.length ? ilYa(seances[seances.length - 1].date_seance, true) : '—'}</strong><span>dernière séance</span></div>
         </div>
-        <button type="submit" disabled={occupe || Boolean(verifier(valeur, REGLES.mesure))}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
-      </form>
-      <ul className="liste">
-        {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (
-          <li key={m.id}>
-            <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
-            <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
-          </li>
-        ))}
-      </ul>
-      </div>
-      </div>
+
+        <div className="deux-colonnes">
+          <div>
+            <h3>Charges</h3>
+            {noms.length ? (
+              <>
+                <select aria-label="Exercice" value={exoChoisi} onChange={e => setExo(e.target.value)}>
+                  {noms.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <h4 className="sous-titre">Charge maximale par séance</h4>
+                <Courbe nom="Charge maximale" points={pointsCharge} unite="kg" cible={cibleCharge} />
+                <h4 className="sous-titre">Force maximale estimée (1RM)</h4>
+                <p className="meta">Formule d’Epley, séries de 12 répétitions maximum.</p>
+                <Courbe nom="Force maximale estimée" points={points1rm} unite="kg" />
+              </>
+            ) : (
+              <p className="meta">Aucune charge enregistrée pour ce client.</p>
+            )}
+
+            <h3>Records</h3>
+            {records.length ? (
+              <ul className="liste">
+                {records.map(r => (
+                  <li key={r.nom}>
+                    <div>
+                      <strong>{r.nom}</strong>
+                      <p>🏆 {r.charge.valeur} kg <span className="meta">({courte(r.charge.date)})</span></p>
+                      {r.force.valeur > 0 && <p className="meta">1RM estimée : {r.force.valeur} kg</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="meta">Aucun record pour l'instant.</p>
+            )}
+
+            {pointsCardio.length > 0 && (
+              <>
+                <h3>Cardio</h3>
+                <p className="meta">
+                  Sur 30 jours : {minutes30} min{km30 > 0 ? ` · ${km30.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km` : ''}. Minutes cumulées par semaine, chaque point est placé au lundi de la semaine.
+                </p>
+                <Courbe nom="Cardio" points={pointsCardio} unite="min" />
+              </>
+            )}
+          </div>
+
+          <div>
+            <h3>Mesures</h3>
+            <select aria-label="Type de mesure" value={type} onChange={e => setType(e.target.value)}>
+              {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+            </select>
+            <Courbe nom={TYPES[type].label} points={pointsMesure} unite={TYPES[type].unite} cible={cibleMesure} />
+            <form onSubmit={e => lancer(() => ajouter(e))}>
+              <div className="ligne">
+                <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
+                <Champ libelle={`Valeur (${TYPES[type].unite})`} erreur={verifier(valeur, REGLES.mesure)}><input inputMode="decimal" value={valeur} onChange={e => setValeur(e.target.value)} /></Champ>
+              </div>
+              <button type="submit" disabled={occupe || Boolean(verifier(valeur, REGLES.mesure))}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
+            </form>
+            <ul className="liste">
+              {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (
+                <li key={m.id}>
+                  <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
+                  <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
   )

@@ -20,7 +20,7 @@ export default function Modeles() {
   async function charger() {
     const { data, error } = await supabase
       .from('modeles')
-      .select('id, nom, duree_min, modele_exercices(ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
+      .select('id, nom, duree_min, modele_exercices(ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
       .order('nom')
     setCharge(true)
     if (error) setErreur(messageErreur(error))
@@ -54,7 +54,7 @@ export default function Modeles() {
     <section>
       <h3>Modèles de séance</h3>
       <MessageErreur message={erreur} reessayer={charger} />
-      {charge && !visibles.length && !erreur && <EtatVide titre="Aucun modèle" texte="Dans l'onglet Séance, saisis tes exercices puis touche « Enregistrer comme modèle »." />}
+      {charge && !visibles.length && !erreur && <EtatVide titre="Aucun modèle" texte="Dans l'onglet Séance, saisis tes exercices puis touche « Créer un modèle »." />}
       {!charge && !erreur && <Squelette lignes={2} />}
       <ul className="liste" hidden={!charge}>
         {visibles.map(m => {
@@ -67,14 +67,17 @@ export default function Modeles() {
                 <p className="meta">
                   {exos.length} exercice(s){m.duree_min ? ` · ${m.duree_min} min` : ''}
                 </p>
-                {exos.map((x, idx) => (
-                  <p key={idx} className="meta">
-                    {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
-                    {x.nom}
-                    {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
-                    {resumeCardio({ duree_min: x.duree_min ?? null, distance_km: x.distance_km ?? null }) ? ` — ${resumeCardio({ duree_min: x.duree_min ?? null, distance_km: x.distance_km ?? null })}` : ''}
-                  </p>
-                ))}
+                {exos.map((x, idx) => {
+                  const cardioTxt = resumeCardio(x)
+                  return (
+                    <p key={idx} className="meta">
+                      {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                      {x.nom}
+                      {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
+                      {cardioTxt ? ` — ${cardioTxt}` : ''}
+                    </p>
+                  )
+                })}
                 <div className="ligne" style={{ flexWrap: 'wrap', marginTop: '.35rem' }}>
                   {exos.length > 0 && (
                     <button className="lien" onClick={() => setModelePdf(m)}>Programme PDF</button>

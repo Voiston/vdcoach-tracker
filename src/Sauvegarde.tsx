@@ -6,13 +6,10 @@ import { useNotifier } from './ui'
 
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
-// Ordre de restauration : les tables liées passent après celles dont elles dépendent
 const TABLES = ['bibliotheque_exercices', 'exercice_muscles', 'clients', 'modeles', 'modele_exercices', 'seances', 'exercices', 'mesures', 'objectifs'] as const
-// Absentes des anciennes sauvegardes : facultatives à l'import
 const FACULTATIVES: string[] = ['bibliotheque_exercices', 'exercice_muscles', 'modeles', 'modele_exercices', 'objectifs']
 type Donnees = { version: number; exporte_le?: string } & Record<(typeof TABLES)[number], Ligne[]>
 
-// L'API renvoie 1000 lignes maximum par requête : on pagine pour tout récupérer.
 async function toutes(table: string): Promise<Ligne[]> {
   const lignes: Ligne[] = []
   for (let debut = 0; ; debut += 1000) {
@@ -68,14 +65,13 @@ export default function Sauvegarde() {
         const lignes = [...seances]
           .sort((a, b) => a.date_seance.localeCompare(b.date_seance))
           .flatMap(s => {
-            const base = [s.date_seance, nomClient.get(s.client_id), s.duree_min, s.ressenti]
+            const base = [s.date_seance, nomClient.get(s.client_id), s.duree_min, s.diff_muscu ?? s.ressenti, s.diff_cardio, s.fatigue, s.sommeil]
             const exos = exercices.filter(x => x.seance_id === s.id).sort((a, b) => a.ordre - b.ordre)
             return (exos.length ? exos : [{}]).map(x =>
-              [...base, x.nom, x.series, x.repetitions, x.charge_kg, x.duree_min, x.distance_km, s.notes].map(cellule).join(';'),
+              [...base, x.nom, x.series, x.repetitions, x.charge_kg, x.duree_sec, x.distance_km, x.reglage, s.notes].map(cellule).join(';'),
             )
           })
-        const entete = ['date', 'client', 'duree_min', 'ressenti', 'exercice', 'series', 'repetitions', 'charge_kg', 'duree_exo_min', 'distance_km', 'notes'].join(';')
-        // BOM + séparateur « ; » : s'ouvre correctement dans Excel / LibreOffice en français
+        const entete = ['date', 'client', 'duree_min', 'diff_muscu', 'diff_cardio', 'fatigue', 'sommeil', 'exercice', 'series', 'repetitions', 'charge_kg', 'duree_sec', 'distance_km', 'reglage', 'notes'].join(';')
         telecharger(`vdcoach-seances-${jour}.csv`, '\uFEFF' + [entete, ...lignes].join('\r\n'), 'text/csv;charset=utf-8')
       }
       setEtat('Export terminé.')
@@ -104,8 +100,6 @@ export default function Sauvegarde() {
     }
   }
 
-  // Fusion : les lignes du fichier sont ajoutées ou mises à jour (même identifiant), rien n'est supprimé.
-  // Les tables sont traitées dans l'ordre des dépendances ; on peut relancer sans risque en cas d'interruption.
   async function restaurer() {
     if (!apercu || !window.confirm('Restaurer ces données ? Les lignes du fichier seront ajoutées ou mises à jour, rien ne sera supprimé.')) return
     setEtat('Restauration en cours…')
