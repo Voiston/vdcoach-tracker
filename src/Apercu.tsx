@@ -6,6 +6,7 @@ import { MUSCLES } from './definitions'
 import type { Rubrique } from './Profil'
 import JaugeObjectif from './JaugeObjectif'
 import Mannequin from './Mannequin'
+import BilanMensuel from './BilanMensuel'
 import { chargerObjectifs, etatObjectif, valeurActuelle, type DonneesObjectifs } from './objectifs-lib'
 import { calculerMuscles, chargerBibliothequeMuscles, chargerSeancesMuscles, evolutionPct, libelleEvolution, variationMuscle, type Volume } from './muscles-lib'
 
@@ -158,6 +159,8 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
           <button type="button" className="lien" onClick={() => onRubrique('seances')}>Toutes les séances →</button>
             </div>
           </div>
+
+          <BilanMensuel />
         </>
       )}
     </section>

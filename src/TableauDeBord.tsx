@@ -3,11 +3,13 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import type { Client } from './Clients'
+import { TESTS } from './definitions'
 import { libelleFormat, regrouperSeances } from './facturation-lib'
 
 type Resume = { id: string; client_id: string; date_seance: string; duree_min: number | null; session_id: string | null }
 
 const SEUIL_RELANCE = 21 // jours sans séance avant de proposer une relance
+const SEUIL_BILAN = 56 // jours (8 semaines) depuis le dernier bilan physique avant de proposer d'en refaire un
 const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 const joursDepuis = (d: string) => Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
 const ilYa = (jours: number) => (jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} jours`)
@@ -16,20 +18,25 @@ const ilYa = (jours: number) => (jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hie
 export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir: (clientId: string) => void; onNouvelleSeance: (clientId: string) => void }) {
   const [clients, setClients] = useState<Client[]>([])
   const [seances, setSeances] = useState<Resume[]>([])
+  const [dernierBilan, setDernierBilan] = useState<Record<string, string>>({}) // client → date de son dernier test physique
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
 
   async function charger() {
-    const [c, s] = await Promise.all([
+    const [c, s, b] = await Promise.all([
       supabase.from('clients').select('*').order('prenom'),
       supabase.from('seances').select('id, client_id, date_seance, duree_min, session_id').order('date_seance', { ascending: false }).order('created_at', { ascending: false }).limit(1000),
+      supabase.from('mesures').select('client_id, date_mesure').in('type', Object.keys(TESTS)).order('date_mesure', { ascending: false }).limit(1000),
     ])
     setPret(true)
-    const err = c.error ?? s.error
+    const err = c.error ?? s.error ?? b.error
     if (err) return setErreur(messageErreur(err))
     setErreur('')
     setClients(c.data as Client[])
     setSeances(s.data as Resume[])
+    const derniers: Record<string, string> = {}
+    for (const m of (b.data ?? []) as { client_id: string; date_mesure: string }[]) derniers[m.client_id] ??= m.date_mesure // trié du plus récent au plus ancien
+    setDernierBilan(derniers)
   }
 
   useEffect(() => {
@@ -57,6 +64,12 @@ export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir
     .map(c => ({ c, jours: derniere[c.id] ? joursDepuis(derniere[c.id]) : null }))
     .filter(x => x.jours === null || x.jours >= SEUIL_RELANCE)
     .sort((a, b) => (b.jours ?? -1) - (a.jours ?? -1))
+
+  // Bilans à refaire : dernier test physique il y a plus de 8 semaines (les clients qui n'en ont jamais fait ne sont pas listés)
+  const bilansARefaire = actifs
+    .filter(c => dernierBilan[c.id] && joursDepuis(dernierBilan[c.id]) > SEUIL_BILAN)
+    .map(c => ({ c, jours: joursDepuis(dernierBilan[c.id]) }))
+    .sort((a, b) => b.jours - a.jours)
 
   return (
     <section className="tableau-de-bord">
@@ -88,6 +101,26 @@ export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir
             </ul>
           ) : (
             <p className="meta">Personne à relancer : tous tes clients ont eu une séance récemment. 👍</p>
+          )}
+
+          {bilansARefaire.length > 0 && (
+            <>
+              <h4 className="sous-titre">Bilan à refaire</h4>
+              <p className="meta">Dernier bilan physique il y a plus de {SEUIL_BILAN / 7} semaines.</p>
+              <ul className="liste">
+                {bilansARefaire.map(({ c, jours }) => (
+                  <li key={c.id}>
+                    <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
+                      <Avatar client={c} />
+                      <span className="ligne-texte">
+                        <strong>{c.prenom} {c.nom}</strong>
+                        <span className="meta">Dernier bilan : il y a {Math.floor(jours / 7)} semaines</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 
