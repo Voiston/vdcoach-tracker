@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
 
 type Reference = { id: string; nom: string; groupe: string; materiel: string; notes: string | null; video_url: string | null; exercice_muscles: { muscle: string; coefficient: number }[] }
-type Formulaire = { id?: string; nom: string; groupe: string; materiel: string; notes: string; video_url: string; muscles: { muscle: string; coefficient: string }[] }
+type Formulaire = { id?: string; ancienNom?: string; nom: string; groupe: string; materiel: string; notes: string; video_url: string; muscles: { muscle: string; coefficient: string }[] }
 
 const vide = (): Formulaire => ({ nom: '', groupe: GROUPES[0], materiel: MATERIELS[0], notes: '', video_url: '', muscles: [] })
-const lienSur = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null) // refuse javascript:, etc.
+const lienSur = (u: string | null) => (u && /^https?:\/\//i.test(u) ? u : null)
 
 export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInitiale?: string }) {
   const [liste, setListe] = useState<Reference[]>([])
@@ -40,21 +40,29 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
     if (!form) return
     const url = form.video_url.trim()
     if (url && !lienSur(url)) return setErreur('Le lien vidéo doit commencer par http:// ou https://')
-    const champs = { nom: form.nom.trim(), groupe: form.groupe, materiel: form.materiel, notes: form.notes.trim() || null, video_url: url || null }
+    const nouveauNom = form.nom.trim()
+    const champs = { nom: nouveauNom, groupe: form.groupe, materiel: form.materiel, notes: form.notes.trim() || null, video_url: url || null }
     const message = (code?: string) => (code === '23505' ? 'Un exercice porte déjà ce nom.' : undefined)
 
     let id = form.id
     if (id) {
       const { error } = await supabase.from('bibliotheque_exercices').update(champs).eq('id', id)
       if (error) return setErreur(message(error.code) ?? messageErreur(error))
+      // Si le nom a changé, on propage le renommage dans les séances, modèles et objectifs existants pour ne pas couper les statistiques
+      if (form.ancienNom && form.ancienNom !== nouveauNom) {
+        await Promise.all([
+          supabase.from('exercices').update({ nom: nouveauNom }).ilike('nom', form.ancienNom),
+          supabase.from('modele_exercices').update({ nom: nouveauNom }).ilike('nom', form.ancienNom),
+          supabase.from('objectifs').update({ reference: nouveauNom }).eq('source', 'charge').ilike('reference', form.ancienNom),
+        ])
+      }
     } else {
       const { data, error } = await supabase.from('bibliotheque_exercices').insert(champs).select('id').single()
       if (error) return setErreur(message(error.code) ?? messageErreur(error))
       id = data.id as string
-      setForm({ ...form, id }) // en cas d'échec plus bas, un nouvel essai ne recrée pas l'exercice
+      setForm({ ...form, id })
     }
 
-    // Muscles sollicités : on remplace l'ensemble (un muscle ne peut apparaître qu'une fois)
     const muscles = [...new Map(form.muscles.filter(m => m.muscle).map(m => [m.muscle, Number(m.coefficient)])).entries()]
     const suppression = await supabase.from('exercice_muscles').delete().eq('exercice_id', id)
     if (suppression.error) return setErreur(messageErreur(suppression.error))
@@ -159,7 +167,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
               {lienSur(x.video_url) && <a href={lienSur(x.video_url)!} target="_blank" rel="noopener noreferrer">Vidéo</a>}
             </div>
             <div className="ligne">
-              <button className="lien" onClick={() => { setForm({ id: x.id, nom: x.nom, groupe: x.groupe, materiel: x.materiel, notes: x.notes ?? '', video_url: x.video_url ?? '', muscles: x.exercice_muscles.map(m => ({ muscle: m.muscle, coefficient: String(Number(m.coefficient)) })) }); setErreur('') }}>Modifier</button>
+              <button className="lien" onClick={() => { setForm({ id: x.id, ancienNom: x.nom, nom: x.nom, groupe: x.groupe, materiel: x.materiel, notes: x.notes ?? '', video_url: x.video_url ?? '', muscles: x.exercice_muscles.map(m => ({ muscle: m.muscle, coefficient: String(Number(m.coefficient)) })) }); setErreur('') }}>Modifier</button>
               <button className="lien danger" onClick={() => supprimer(x)}>Supprimer</button>
             </div>
           </li>

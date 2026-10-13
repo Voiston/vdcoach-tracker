@@ -6,6 +6,7 @@ import App from './App'
 import { NotificationsProvider } from './ui'
 import MiseAJour from './MiseAJour'
 import './styles.css'
+import './suivi.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

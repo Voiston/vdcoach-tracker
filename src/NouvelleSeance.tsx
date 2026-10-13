@@ -176,10 +176,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
 
-  const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
+  const estCardio = (nom: string, l?: Ligne) =>
+    biblio[cle(nom)]?.groupe === 'Cardio' || Boolean(l && (l.duree_sec.trim() || l.distance_km.trim()) && !l.repetitions.trim())
+
   const valeurs = (l: Ligne) => ({
     series: num(l.series),
-    ...(estCardio(l.nom)
+    ...(estCardio(l.nom, l)
       ? { repetitions: null, charge_kg: null, duree_sec: num(l.duree_sec), duree_min: null, distance_km: num(l.distance_km) }
       : { repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_sec: null, duree_min: null, distance_km: null }),
     reglage: l.reglage.trim() || null,
@@ -258,7 +260,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
     const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => {
       const d = derniers[cle(l.nom)]
-      const cardio = estCardio(l.nom)
+      const cardio = estCardio(l.nom, l)
       return {
         ...l,
         series: l.series || txt(d?.series ?? 3),
@@ -482,7 +484,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   function progresser(i: number) {
-    const cardio = estCardio(lignes[i].nom)
+    const cardio = estCardio(lignes[i].nom, lignes[i])
     const d = derniers[cle(lignes[i].nom)]
     const p = d && proposition(d, cardio)
     if (!d || !p) return
@@ -640,7 +642,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     verifier(duree, REGLES.duree) ||
     lignes.some(l =>
       verifier(l.series, REGLES.series) ||
-      (estCardio(l.nom)
+      (estCardio(l.nom, l)
         ? verifier(l.duree_sec, REGLES.duree_sec) || verifier(l.distance_km, REGLES.distance)
         : verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge)),
     )
@@ -746,7 +748,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         {lignes.map((l, i) => {
           const dernier = derniers[cle(l.nom)]
           const fiche = biblio[cle(l.nom)]
-          const cardio = estCardio(l.nom)
+          const cardio = estCardio(l.nom, l)
           const prop = dernier ? proposition(dernier, cardio) : null
           const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
           const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
