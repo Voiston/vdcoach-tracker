@@ -38,69 +38,65 @@ function DocumentProgramme({
   const etiquettes = etiquettesSuperset(lignes)
 
   return (
-    <table className="bp-cadre">
-      <thead><tr><td><div className="bp-marge" /></td></tr></thead>
-      <tfoot><tr><td><div className="bp-marge" /></td></tr></tfoot>
-      <tbody><tr><td className="bp-contenu">
-        <div className="bp-entete">
-          <img src={logo} alt="VDCoach" />
-          <div className="bp-titre">
-            <small>Programme d’entraînement</small>
-            <h1>{prenom.trim() || titre}</h1>
-            {prenom.trim() && <span>{titre}</span>}
-          </div>
+    <div className="bp-document">
+      <div className="bp-entete">
+        <img src={logo} alt="VDCoach" />
+        <div className="bp-titre">
+          <small>Programme d’entraînement</small>
+          <h1>{prenom.trim() || titre}</h1>
+          {prenom.trim() && <span>{titre}</span>}
         </div>
+      </div>
 
-        {consigne.trim() && (
-          <div className="bp-mot">
-            <strong>Consignes du coach</strong>
-            <p>{consigne.trim()}</p>
-          </div>
-        )}
+      {consigne.trim() && (
+        <div className="bp-mot">
+          <strong>Consignes du coach</strong>
+          <p>{consigne.trim()}</p>
+        </div>
+      )}
 
-        <section className="bp-section">
-          <h2 className="bp-h">Séance ({lignes.length} exercice{lignes.length > 1 ? 's' : ''})</h2>
-          <div className="prog-liste">
-            {lignes.map((l, i) => {
-              const info = biblio[cle(l.nom)]
-              const video = lienSur(info?.video_url)
-              const cardio = resumeCardio({ duree_min: l.duree_min ?? null, distance_km: l.distance_km ?? null })
-              const dosage = cardio
-                ? cardio
-                : [
-                    l.series && l.repetitions ? `${l.series} × ${l.repetitions}` : l.series ? `${l.series} séries` : l.repetitions ? `${l.repetitions} reps` : '',
-                    l.charge_kg ? `${l.charge_kg} kg` : '',
-                  ].filter(Boolean).join(' · ')
+      <section className="bp-section prog-section">
+        <h2 className="bp-h">Séance ({lignes.length} exercice{lignes.length > 1 ? 's' : ''})</h2>
+        <div className="prog-liste">
+          {lignes.map((l, i) => {
+            const info = biblio[cle(l.nom)]
+            const video = lienSur(info?.video_url)
+            const cardio = resumeCardio({ duree_min: l.duree_min ?? null, distance_km: l.distance_km ?? null })
+            const dosage = cardio
+              ? cardio
+              : [
+                  l.series && l.repetitions ? `${l.series} × ${l.repetitions}` : l.series ? `${l.series} séries` : l.repetitions ? `${l.repetitions} reps` : '',
+                  l.charge_kg ? `${l.charge_kg} kg` : '',
+                ].filter(Boolean).join(' · ')
 
-              return (
-                <div key={i} className={`prog-exo${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`}>
-                  <div className="prog-exo-entete">
-                    <div>
-                      <span className="prog-num">{etiquettes[i] ?? `#${i + 1}`}</span>
-                      <strong className="prog-nom">{l.nom}</strong>
-                      {info && <small className="prog-meta">{info.groupe} · {info.materiel}</small>}
-                    </div>
-                    {dosage && <b className="prog-dosage">{dosage}</b>}
+            return (
+              <div key={i} className={`prog-exo${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`}>
+                <div className="prog-exo-entete">
+                  <div>
+                    <span className="prog-num">{etiquettes[i] ?? `#${i + 1}`}</span>
+                    <strong className="prog-nom">{l.nom}</strong>
+                    {info && <small className="prog-meta">{info.groupe} · {info.materiel}</small>}
                   </div>
-                  {l.reglage && <p className="prog-reglage"><strong>Réglage :</strong> {l.reglage}</p>}
-                  {info?.notes && <p className="prog-notes">{info.notes}</p>}
-                  {video && (
-                    <p className="prog-video">
-                      <a href={video} target="_blank" rel="noopener noreferrer">▶ Voir la vidéo de démonstration</a>
-                    </p>
-                  )}
+                  {dosage && <b className="prog-dosage">{dosage}</b>}
                 </div>
-              )
-            })}
-          </div>
-        </section>
-
-        <div className="bp-pied">
-          <span>vdcoach.fr</span>
-          <span>Édité le {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                {l.reglage && <p className="prog-reglage"><strong>Réglage :</strong> {l.reglage}</p>}
+                {info?.notes && <p className="prog-notes">{info.notes}</p>}
+                {video && (
+                  <p className="prog-video">
+                    <a href={video} target="_blank" rel="noopener noreferrer">▶ Voir la vidéo de démonstration</a>
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
-      </td></tr></tbody>
-    </table>
+      </section>
+
+      <div className="bp-pied">
+        <span>vdcoach.fr</span>
+        <span>Édité le {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+      </div>
+    </div>
   )
 }
 
