@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
+import { SelecteurZonesSensibles } from './Clients'
 import GroupeFacturation from './GroupeFacturation'
 import { Champ, MessageErreur, useClientComplet, useNotifier, useOccupe } from './ui'
 
@@ -11,6 +12,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
   const [nom, setNom] = useState(client.nom ?? '')
   const [objectifs, setObjectifs] = useState(client.objectifs ?? '')
   const [attention, setAttention] = useState(client.points_attention ?? '')
+  const [zones, setZones] = useState<string[]>(client.zones_sensibles ?? [])
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
 
@@ -18,7 +20,13 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
     e.preventDefault()
     const { error } = await supabase
       .from('clients')
-      .update({ prenom: prenom.trim(), nom: nom.trim() || null, objectifs: objectifs.trim() || null, points_attention: attention.trim() || null })
+      .update({
+        prenom: prenom.trim(),
+        nom: nom.trim() || null,
+        objectifs: objectifs.trim() || null,
+        points_attention: attention.trim() || null,
+        zones_sensibles: zones,
+      })
       .eq('id', client.id)
     if (error) return setErreur(messageErreur(error))
     setErreur('')
@@ -43,6 +51,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
         <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : ils s'affichent en haut du profil.">
           <textarea value={attention} onChange={e => setAttention(e.target.value)} />
         </Champ>
+        <SelecteurZonesSensibles zones={zones} onChange={setZones} />
         <MessageErreur message={erreur} />
         <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer la fiche'}</button>
       </form>

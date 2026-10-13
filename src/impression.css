@@ -147,3 +147,30 @@
   .bilan-apercu-page .bp-muscles,
   .bilan-apercu-page .bp-courbes { grid-template-columns: 1fr; }
 }
+
+/* Programme d'entraînement en autonomie (PDF A4) */
+.prog-options {
+  width: min(100%, 210mm);
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin-bottom: 1rem;
+  padding: .85rem 1rem;
+  background: var(--surface);
+  color: var(--encre);
+  border-radius: 16px;
+  box-shadow: var(--ombre);
+}
+.prog-liste { display: flex; flex-direction: column; gap: 3mm; }
+.prog-exo { padding: 3.5mm 4mm; border: 1px solid var(--bord); border-radius: 3mm; break-inside: avoid; }
+.prog-exo.lie-suivant { margin-bottom: -1.5mm; border-left: 1.2mm solid var(--accent); border-bottom-style: dashed; }
+.prog-exo.lie-suivant + .prog-exo { border-left: 1.2mm solid var(--accent); }
+.prog-exo-entete { display: flex; justify-content: space-between; align-items: baseline; gap: 4mm; }
+.prog-num { display: inline-block; margin-right: 2mm; padding: .5mm 2mm; font-size: 8.5pt; font-weight: 700; color: #fff; background: var(--accent); border-radius: 99px; }
+.prog-nom { font-size: 11pt; }
+.prog-meta { margin-left: 2mm; font-size: 8.5pt; color: var(--discret); }
+.prog-dosage { font-family: var(--titre); font-size: 12pt; color: var(--accent-fonce); white-space: nowrap; }
+.prog-reglage { margin-top: 1.5mm; font-size: 9pt; color: var(--accent-fonce); }
+.prog-notes { margin-top: 1.5mm; font-size: 9pt; color: var(--discret); white-space: pre-wrap; }
+.prog-video { margin-top: 1.5mm; font-size: 8.5pt; }
+.prog-video a { color: var(--accent); text-decoration: underline; }

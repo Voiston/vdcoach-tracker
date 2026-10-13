@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
+import { dateFr, etiquettesSuperset, resumeCardio } from './format'
+import FenetreProgrammePdf from './ProgrammePdf'
 import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
 
-type Exercice = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
+type Exercice = {
+  id: string
+  ordre: number
+  nom: string
+  series: number | null
+  repetitions: number | null
+  charge_kg: number | null
+  duree_min: number | null
+  distance_km: number | null
+  reglage?: string | null
+  lie_suivant?: boolean | null
+}
 type Seance = { id: string; date_seance: string; duree_min: number | null; ressenti: number | null; notes: string | null; exercices: Exercice[] }
 
 const TAILLE = 20
-const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-const resumeCardio = (x: { duree_min: number | null; distance_km: number | null }) =>
-  [x.duree_min !== null ? `${x.duree_min} min` : '', x.distance_km !== null ? `${x.distance_km} km` : ''].filter(Boolean).join(' · ')
 
 export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) => void; onNouvelle: () => void }) {
   const client = useClient()
@@ -20,14 +30,14 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
   const [masquees, setMasquees] = useState<string[]>([])
+  const [seancePdf, setSeancePdf] = useState<Seance | null>(null)
 
-  // Charge une page de TAILLE séances à partir de l'indice « depuis » (0 = on repart du début)
   async function charger(depuis: number) {
     setChargement(true)
     if (depuis === 0) setPret(false)
     const { data, error } = await supabase
       .from('seances')
-      .select('id, date_seance, duree_min, ressenti, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)')
+      .select('id, date_seance, duree_min, ressenti, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
       .eq('client_id', client.id)
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
@@ -48,7 +58,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
   function supprimer(s: Seance) {
     supprimerAvecAnnulation({
       notifier,
-      message: `Séance du ${dateFr(s.date_seance)} supprimée`,
+      message: `Séance du ${dateFr(s.date_seance, true)} supprimée`,
       masquer: () => setMasquees(l => [...l, s.id]),
       restaurer: () => setMasquees(l => l.filter(id => id !== s.id)),
       effacer: async () => {
@@ -69,34 +79,52 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
         <EtatVide titre="Aucune séance pour l'instant" texte={`Les séances de ${client.prenom} apparaîtront ici.`} action={{ libelle: 'Enregistrer une séance', onClick: onNouvelle }} />
       )}
       <ul className="liste" hidden={!pret}>
-        {visibles.map(s => (
-          <li key={s.id}>
-            <div>
-              <strong>{dateFr(s.date_seance)}</strong>
-              <p className="meta">
-                {[s.duree_min ? `${s.duree_min} min` : '', s.ressenti ? `ressenti ${s.ressenti}/10` : ''].filter(Boolean).join(' · ')}
-              </p>
-              {[...s.exercices].sort((a, b) => a.ordre - b.ordre).map(x => (
-                <p key={x.id}>
-                  {x.nom}
-                  {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
-                  {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
-                  {resumeCardio(x) ? ` — ${resumeCardio(x)}` : ''}
+        {visibles.map(s => {
+          const exosTries = [...s.exercices].sort((a, b) => a.ordre - b.ordre)
+          const etiquettes = etiquettesSuperset(exosTries)
+          return (
+            <li key={s.id}>
+              <div>
+                <strong>{dateFr(s.date_seance, true)}</strong>
+                <p className="meta">
+                  {[s.duree_min ? `${s.duree_min} min` : '', s.ressenti ? `ressenti ${s.ressenti}/10` : ''].filter(Boolean).join(' · ')}
                 </p>
-              ))}
-              {s.notes && <p className="meta">{s.notes}</p>}
-              <div className="ligne">
-                <button className="lien" onClick={() => onEdit(s.id)}>Modifier</button>
-                <button className="lien danger" onClick={() => supprimer(s)}>Supprimer</button>
+                {exosTries.map((x, idx) => (
+                  <p key={x.id}>
+                    {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                    {x.nom}
+                    {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
+                    {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
+                    {resumeCardio(x) ? ` — ${resumeCardio(x)}` : ''}
+                    {x.reglage && <span className="meta"> ({x.reglage})</span>}
+                  </p>
+                ))}
+                {s.notes && <p className="meta">{s.notes}</p>}
+                <div className="ligne" style={{ flexWrap: 'wrap', marginTop: '.35rem' }}>
+                  <button className="lien" onClick={() => onEdit(s.id)}>Modifier</button>
+                  {exosTries.length > 0 && (
+                    <button className="lien" onClick={() => setSeancePdf(s)}>Programme PDF</button>
+                  )}
+                  <button className="lien danger" onClick={() => supprimer(s)}>Supprimer</button>
+                </div>
               </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ul>
       {visibles.length > 0 && !fin && (
         <button type="button" className="secondaire" disabled={chargement} onClick={() => charger(seances.length)}>
           {chargement ? 'Chargement…' : 'Charger plus'}
         </button>
+      )}
+      {seancePdf && (
+        <FenetreProgrammePdf
+          titreInitial={`Séance du ${dateFr(seancePdf.date_seance, true)}`}
+          prenomInitial={client.prenom}
+          consigneInitiale={seancePdf.notes ?? ''}
+          lignes={[...seancePdf.exercices].sort((a, b) => a.ordre - b.ordre)}
+          onFermer={() => setSeancePdf(null)}
+        />
       )}
     </section>
   )

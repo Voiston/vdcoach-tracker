@@ -365,3 +365,28 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
 .facturation details[open] .chevron { transform: rotate(90deg); }
 .facturation summary:hover .fact-nom strong { color: var(--accent-fonce); }
 .pied-facturation { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; margin-top: 1rem; }
+
+/* Chronomètre flottant */
+.chrono-barre { position: sticky; top: calc(3.2rem + env(safe-area-inset-top)); z-index: 6; display: flex; flex-direction: column; gap: .5rem; margin-bottom: .75rem; padding: .65rem .85rem; background: var(--surface); border: 1.5px solid var(--accent); border-radius: 18px; box-shadow: var(--ombre); }
+.chrono-barre.reduit { position: sticky; display: inline-flex; width: auto; padding: 0; background: none; border: 0; box-shadow: none; }
+.chrono-pastille { min-height: 2.5rem; padding: .35rem .9rem; font-size: .9rem; border-radius: 999px; box-shadow: var(--ombre); }
+.chrono-barre.termine { border-color: var(--succes); background: var(--accent-doux); }
+.chrono-entete { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.chrono-affichage { font-family: var(--titre); font-size: 1.65rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-fonce); }
+.chrono-btn { min-height: 2.25rem; padding: .25rem .65rem; font-size: .85rem; }
+.chrono-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chrono-preset { min-height: 2.25rem; padding: .25rem .7rem; font-size: .85rem; border-radius: 10px; }
+@media (min-width: 960px) { .chrono-barre { top: 4.5rem; } }
+
+/* Mémo de réglage, Supersets et Zones sensibles */
+.champ-reglage { min-height: 2.6rem; padding: .45rem .8rem; font-size: .9rem; background: var(--fond); border-style: dashed; }
+.exercice.lie-suivant { margin-bottom: -.35rem; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; border-left: 4px solid var(--accent); }
+.exercice.lie-suivant + .exercice { border-top-left-radius: 6px; border-top-right-radius: 6px; border-left: 4px solid var(--accent); }
+.superset-lien { align-self: flex-start; min-height: 2rem; padding: .2rem .5rem; font-size: .85rem; }
+.superset-lien.actif { background: var(--accent-doux); color: var(--accent-fonce); }
+.puce.superset { background: var(--accent); color: var(--sur-accent); font-weight: 700; }
+.puce.superset-mini { margin-right: .4rem; padding: .05rem .45rem; font-size: .75rem; background: var(--accent); color: var(--sur-accent); }
+.puce-choix.alerte { color: var(--alerte-texte); background: var(--alerte-fond); border-color: var(--alerte-texte); }
+.puce.alerte-muscle { margin-left: .4rem; background: var(--alerte-fond); color: var(--alerte-texte); }
+.alerte-zone { padding: .45rem .75rem; font-size: .875rem; background: var(--alerte-fond); color: var(--alerte-texte); border-radius: 12px; }
+.selecteur-ligne-titre { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }

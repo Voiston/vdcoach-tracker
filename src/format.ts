@@ -1,4 +1,4 @@
-// Utilitaires de dates et de formatage partagés dans toute l'application.
+// Utilitaires de dates, de formatage et de numérotation des supersets partagés dans toute l'application.
 
 export const aujourdhui = () => new Date().toLocaleDateString('sv-SE')
 
@@ -37,3 +37,28 @@ export const resumeCardio = (x: { duree_min: number | null; distance_km: number 
   [x.duree_min !== null ? `${x.duree_min} min` : '', x.distance_km !== null ? `${x.distance_km} km` : '']
     .filter(Boolean)
     .join(' · ')
+
+/**
+ * Renvoie l'étiquette de superset/circuit ('A1', 'A2', 'B1'...) pour chaque ligne,
+ * ou null si l'exercice est réalisé seul.
+ */
+export function etiquettesSuperset(lignes: { lie_suivant?: boolean | null }[]): (string | null)[] {
+  const res: (string | null)[] = Array(lignes.length).fill(null)
+  let groupe = 0
+  let indice = 1
+  for (let i = 0; i < lignes.length; i++) {
+    const lieApres = Boolean(lignes[i]?.lie_suivant) && i < lignes.length - 1
+    const lieAvant = i > 0 && Boolean(lignes[i - 1]?.lie_suivant)
+    if (lieApres || lieAvant) {
+      if (!lieAvant) {
+        groupe++
+        indice = 1
+      } else {
+        indice++
+      }
+      const lettre = String.fromCharCode(64 + ((groupe - 1) % 26) + 1)
+      res[i] = `${lettre}${indice}`
+    }
+  }
+  return res
+}

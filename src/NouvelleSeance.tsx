@@ -2,30 +2,78 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { aujourdhui, dateLocale, resumeCardio } from './format'
+import { MUSCLES } from './definitions'
+import { aujourdhui, dateLocale, etiquettesSuperset, resumeCardio } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
 import { Champ, Compteur, FeuilleSaisie, MessageErreur, useClient, useNotifier } from './ui'
 import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
+import Chronometre from './Chronometre'
 
-type Ligne = { nom: string; series: string; repetitions: string; charge_kg: string; duree_min: string; distance_km: string }
-type Exo = { id: string; ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
+type Ligne = {
+  nom: string
+  series: string
+  repetitions: string
+  charge_kg: string
+  duree_min: string
+  distance_km: string
+  reglage: string
+  lie_suivant: boolean
+}
+type Exo = {
+  id: string
+  ordre: number
+  nom: string
+  series: number | null
+  repetitions: number | null
+  charge_kg: number | null
+  duree_min: number | null
+  distance_km: number | null
+  reglage?: string | null
+  lie_suivant?: boolean | null
+}
 
-const vide = (): Ligne => ({ nom: '', series: '', repetitions: '', charge_kg: '', duree_min: '', distance_km: '' })
+const vide = (): Ligne => ({
+  nom: '',
+  series: '',
+  repetitions: '',
+  charge_kg: '',
+  duree_min: '',
+  distance_km: '',
+  reglage: '',
+  lie_suivant: false,
+})
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
-const txt = (n: number | null) => (n === null ? '' : String(n))
+const txt = (n: number | null | undefined) => (n == null ? '' : String(n))
 const versLignes = (exos: Exo[]): Ligne[] =>
   exos.length
     ? [...exos]
         .sort((a, b) => a.ordre - b.ordre)
-        .map(x => ({ nom: x.nom, series: txt(x.series), repetitions: txt(x.repetitions), charge_kg: txt(x.charge_kg), duree_min: txt(x.duree_min), distance_km: txt(x.distance_km) }))
+        .map(x => ({
+          nom: x.nom,
+          series: txt(x.series),
+          repetitions: txt(x.repetitions),
+          charge_kg: txt(x.charge_kg),
+          duree_min: txt(x.duree_min),
+          distance_km: txt(x.distance_km),
+          reglage: x.reglage ?? '',
+          lie_suivant: Boolean(x.lie_suivant),
+        }))
     : [vide()]
 
-const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)'
+const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)'
 const PLAFOND_REPS = 12
 const PAS_KG = 2.5
 
-type Dernier = { date: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }
+type Dernier = {
+  date: string
+  series: number | null
+  repetitions: number | null
+  charge_kg: number | null
+  duree_min: number | null
+  distance_km: number | null
+  reglage: string | null
+}
 const cle = (nom: string) => nom.trim().toLowerCase()
 const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&')
 
@@ -43,13 +91,14 @@ function proposition(d: Dernier) {
 
 function DerniereFois({ d, cardio }: { d: Dernier; cardio: boolean }) {
   const date = dateLocale(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-  if (cardio) return <p className="meta">Dernière fois ({date}) : {resumeCardio(d) || '?'}</p>
+  if (cardio) return <p className="meta">Dernière fois ({date}) : {resumeCardio(d) || '?'}{d.reglage ? ` · ⚙ ${d.reglage}` : ''}</p>
   const conseil = suggestion(d)
   return (
     <p className="meta">
       Dernière fois ({date}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
       {d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}
       {conseil ? ` · ${conseil}` : ''}
+      {d.reglage ? ` · ⚙ ${d.reglage}` : ''}
     </p>
   )
 }
@@ -71,6 +120,7 @@ function FicheExercice({ b }: { b: Fiche }) {
 export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string | null; onSaved: (message?: string) => void }) {
   const client = useClient()
   const clientId = client.id
+  const zonesSensibles = client.zones_sensibles ?? []
   const notifier = useNotifier()
   const [feuilleModele, setFeuilleModele] = useState(false)
   const [choix, setChoix] = useState<number | null>(null)
@@ -92,10 +142,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [copierCharges, setCopierCharges] = useState(false)
 
   const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
-  const valeurs = (l: Ligne) =>
-    estCardio(l.nom)
+  const valeurs = (l: Ligne) => ({
+    ...(estCardio(l.nom)
       ? { series: null, repetitions: null, charge_kg: null, duree_min: num(l.duree_min), distance_km: num(l.distance_km) }
-      : { series: num(l.series), repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_min: null, distance_km: null }
+      : { series: num(l.series), repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_min: null, distance_km: null }),
+    reglage: l.reglage.trim() || null,
+    lie_suivant: l.lie_suivant,
+  })
 
   useEffect(() => {
     if (seanceId) return
@@ -135,11 +188,16 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!id) return
     const { data, error } = await supabase
       .from('modeles')
-      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km)')
+      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_min, distance_km, reglage, lie_suivant)')
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
-    setLignes(versLignes(data.modele_exercices as Exo[]))
+    // Si le client a déjà un mémo de réglage personnel sur un exercice du modèle, on le pré-remplit
+    const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => ({
+      ...l,
+      reglage: l.reglage || derniers[cle(l.nom)]?.reglage || '',
+    }))
+    setLignes(nouvelles)
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
   }
@@ -155,6 +213,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         ordre: i,
         nom: l.nom.trim(),
         ...valeurs(l),
+        lie_suivant: i < exos.length - 1 ? l.lie_suivant : false,
       })),
     )
     if (erreurExos) {
@@ -172,11 +231,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       .then(({ data }) => setBiblio(Object.fromEntries((data ?? []).map(x => [cle(x.nom), x as Fiche]))))
   }, [])
 
+  // Dernière performance ET dernier mémo de réglage de ce client pour chaque exercice
   useEffect(() => {
     if (!clientId) return
     supabase
       .from('seances')
-      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg, duree_min, distance_km)')
+      .select('id, date_seance, exercices(nom, series, repetitions, charge_kg, duree_min, distance_km, reglage)')
       .eq('client_id', clientId)
       .lte('date_seance', date)
       .order('date_seance', { ascending: false })
@@ -188,14 +248,26 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           if (s.id === seanceId) continue
           for (const x of s.exercices as any[]) {
             const k = cle(x.nom)
-            if (!m[k]) m[k] = { date: s.date_seance, series: x.series, repetitions: x.repetitions, charge_kg: x.charge_kg, duree_min: x.duree_min, distance_km: x.distance_km }
+            if (!m[k]) {
+              m[k] = {
+                date: s.date_seance,
+                series: x.series,
+                repetitions: x.repetitions,
+                charge_kg: x.charge_kg,
+                duree_min: x.duree_min,
+                distance_km: x.distance_km,
+                reglage: x.reglage ?? null,
+              }
+            } else if (!m[k].reglage && x.reglage) {
+              // Retrouve le dernier mémo de réglage connu même s'il date d'une séance plus ancienne
+              m[k].reglage = x.reglage
+            }
           }
         }
         setDerniers(m)
       })
   }, [clientId, seanceId, date])
 
-  // Parallélise la vérification des records sur tous les exercices de la séance
   async function detecterRecords(): Promise<string[]> {
     const vus = new Set<string>()
     const candidats = lignes.flatMap(l => {
@@ -256,7 +328,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   function choisirExercice(nom: string) {
     const i = choix
     if (i === null) return
-    setLignes(l => l.map((x, j) => (j === i ? { ...x, nom } : x)))
+    const memoPrecedent = derniers[cle(nom)]?.reglage ?? ''
+    setLignes(l =>
+      l.map((x, j) => (j === i ? { ...x, nom, reglage: x.reglage.trim() ? x.reglage : memoPrecedent } : x)),
+    )
     setChoix(null)
   }
 
@@ -272,17 +347,43 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   function copierDerniere(i: number) {
     const d = derniers[cle(lignes[i].nom)]
     if (!d) return
-    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(d.repetitions), charge_kg: txt(d.charge_kg), duree_min: txt(d.duree_min), distance_km: txt(d.distance_km) } : x)))
+    setLignes(l =>
+      l.map((x, j) =>
+        j === i
+          ? {
+              ...x,
+              series: txt(d.series),
+              repetitions: txt(d.repetitions),
+              charge_kg: txt(d.charge_kg),
+              duree_min: txt(d.duree_min),
+              distance_km: txt(d.distance_km),
+              reglage: x.reglage.trim() || d.reglage || '',
+            }
+          : x,
+      ),
+    )
   }
 
   function progresser(i: number) {
     const d = derniers[cle(lignes[i].nom)]
     const p = d && proposition(d)
     if (!d || !p) return
-    setLignes(l => l.map((x, j) => (j === i ? { ...x, series: txt(d.series), repetitions: txt(p.repetitions), charge_kg: txt(p.charge_kg) } : x)))
+    setLignes(l =>
+      l.map((x, j) =>
+        j === i
+          ? {
+              ...x,
+              series: txt(d.series),
+              repetitions: txt(p.repetitions),
+              charge_kg: txt(p.charge_kg),
+              reglage: x.reglage.trim() || d.reglage || '',
+            }
+          : x,
+      ),
+    )
   }
 
-  function maj(i: number, champ: keyof Ligne, valeur: string) {
+  function maj<K extends keyof Ligne>(i: number, champ: K, valeur: Ligne[K]) {
     setLignes(l => l.map((x, j) => (j === i ? { ...x, [champ]: valeur } : x)))
   }
 
@@ -308,14 +409,30 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   const prenomDe = (id: string) => autres.find(c => c.id === id)?.prenom ?? 'client'
 
-  async function creerSeancesPartagees(sessionId: string, exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null }[]): Promise<string[]> {
+  async function creerSeancesPartagees(
+    sessionId: string,
+    exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_min: number | null; distance_km: number | null; reglage: string | null; lie_suivant: boolean }[],
+  ): Promise<string[]> {
     const echecNoms = invites.map(prenomDe)
     const { data, error } = await supabase
       .from('seances')
       .insert(invites.map(cid => ({ client_id: cid, date_seance: date, duree_min: num(duree), session_id: sessionId })))
       .select('id, client_id')
     if (error || !data) return echecNoms
-    const lignesExos = data.flatMap(s => exos.map(x => ({ seance_id: s.id, ordre: x.ordre, nom: x.nom, series: x.series, repetitions: x.repetitions, charge_kg: copierCharges ? x.charge_kg : null, duree_min: x.duree_min, distance_km: x.distance_km })))
+    const lignesExos = data.flatMap(s =>
+      exos.map(x => ({
+        seance_id: s.id,
+        ordre: x.ordre,
+        nom: x.nom,
+        series: x.series,
+        repetitions: x.repetitions,
+        charge_kg: copierCharges ? x.charge_kg : null,
+        duree_min: x.duree_min,
+        distance_km: x.distance_km,
+        reglage: copierCharges ? x.reglage : null,
+        lie_suivant: x.lie_suivant,
+      })),
+    )
     if (lignesExos.length) {
       const { error: erreurExos } = await supabase.from('exercices').insert(lignesExos)
       if (erreurExos) {
@@ -344,14 +461,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       id = data.id as string
     }
 
-    const exercices = lignes
-      .filter(l => l.nom.trim())
-      .map((l, i) => ({
-        seance_id: id,
-        ordre: i,
-        nom: l.nom.trim(),
-        ...valeurs(l),
-      }))
+    const renseignes = lignes.filter(l => l.nom.trim())
+    const exercices = renseignes.map((l, i) => ({
+      seance_id: id,
+      ordre: i,
+      nom: l.nom.trim(),
+      ...valeurs(l),
+      lie_suivant: i < renseignes.length - 1 ? l.lie_suivant : false,
+    }))
 
     let nouveauxIds: string[] = []
     if (exercices.length) {
@@ -394,6 +511,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const n = valeurs(l).series
     return total + (n && !Number.isNaN(n) ? n : 0)
   }, 0)
+  const etiquettes = etiquettesSuperset(lignes)
   const partenaires = autres.filter(c => client.groupe_facturation && c.groupe_facturation === client.groupe_facturation)
   const puces = [...partenaires, ...(invites.filter(id => !partenaires.some(p => p.id === id)).map(id => autres.find(c => c.id === id)).filter(Boolean) as typeof autres)]
   const basculerInvite = (id: string) => setInvites(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
@@ -408,6 +526,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   return (
     <>
+      <Chronometre />
       <form onSubmit={enregistrer}>
         <h3 className="titre-seance">{seanceId ? 'Modifier la séance' : 'Nouvelle séance'}</h3>
         {brouillon && (
@@ -449,7 +568,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 <p className="meta">La séance sera enregistrée pour chaque participant, avec les mêmes exercices, et ne comptera que pour une séance en facturation.</p>
                 <label className="case">
                   <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
-                  Copier aussi les charges (sinon à compléter dans leur profil)
+                  Copier aussi les charges et réglages (sinon à compléter dans leur profil)
                 </label>
               </>
             )}
@@ -470,11 +589,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         )}
         {lignes.map((l, i) => {
           const dernier = derniers[cle(l.nom)]
+          const fiche = biblio[cle(l.nom)]
           const cardio = estCardio(l.nom)
           const prop = dernier ? proposition(dernier) : null
+          const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
+
           return (
-            <div className="exercice" key={i}>
+            <div className={`exercice${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`} key={i}>
               <div className="exercice-entete">
+                {etiquettes[i] && <span className="puce superset">{etiquettes[i]}</span>}
                 <button
                   type="button"
                   className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
@@ -485,6 +608,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 </button>
                 <button type="button" className="lien danger" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
               </div>
+
+              {sollicitesSensibles.length > 0 && (
+                <p className="alerte-zone" role="status">
+                  ⚠ Sollicite une zone sensible de {client.prenom} :{' '}
+                  <strong>{sollicitesSensibles.map(m => MUSCLES[m.muscle] ?? m.muscle).join(', ')}</strong>
+                </p>
+              )}
+
               {dernier && (
                 <>
                   <DerniereFois d={dernier} cardio={cardio} />
@@ -494,6 +625,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   </div>
                 </>
               )}
+
               {cardio ? (
                 <div className="compteurs deux">
                   <Compteur libelle="Durée (min)" valeur={l.duree_min} onChange={v => maj(i, 'duree_min', v)} pas={5} depart={dernier?.duree_min ?? 20} erreur={verifier(l.duree_min, REGLES.duree)} />
@@ -506,7 +638,27 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   <Compteur libelle="Charge (kg)" valeur={l.charge_kg} onChange={v => maj(i, 'charge_kg', v)} pas={PAS_KG} depart={dernier?.charge_kg ?? PAS_KG} decimal erreur={verifier(l.charge_kg, REGLES.charge)} />
                 </div>
               )}
-              {biblio[cle(l.nom)] && <FicheExercice b={biblio[cle(l.nom)]} />}
+
+              <input
+                className="champ-reglage"
+                aria-label="Mémo de réglage pour cet exercice"
+                placeholder="⚙ Mémo réglage client (ex. élastique rouge, poulie cran 4, prise neutre…)"
+                value={l.reglage}
+                onChange={e => maj(i, 'reglage', e.target.value)}
+              />
+
+              {fiche && <FicheExercice b={fiche} />}
+
+              {i < lignes.length - 1 && (
+                <button
+                  type="button"
+                  className={`lien superset-lien${l.lie_suivant ? ' actif' : ''}`}
+                  aria-pressed={l.lie_suivant}
+                  onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
+                >
+                  {l.lie_suivant ? '⛓ Lié à l’exercice suivant (Superset / Circuit)' : '+ Lier à l’exercice suivant (Superset)'}
+                </button>
+              )}
             </div>
           )
         })}
@@ -523,7 +675,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           <button type="submit" disabled={envoi || Boolean(invalide)}>{envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer les modifications' : 'Enregistrer la séance'}</button>
         </div>
       </form>
-      {choix !== null && <SelecteurExercice exercices={choixExercices} faits={faits} onChoisir={choisirExercice} onFermer={fermerSelecteur} />}
+      {choix !== null && (
+        <SelecteurExercice
+          exercices={choixExercices}
+          faits={faits}
+          zonesSensibles={zonesSensibles}
+          onChoisir={choisirExercice}
+          onFermer={fermerSelecteur}
+        />
+      )}
       {feuilleModele && (
         <FeuilleSaisie
           titre="Nouveau modèle"

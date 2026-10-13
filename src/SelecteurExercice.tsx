@@ -7,15 +7,22 @@ export type ExoChoix = { nom: string; groupe?: string; materiel?: string; muscle
 // Recherche insensible aux accents et aux majuscules (« elevation » trouve « Élévation »)
 export const normaliser = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
 
-export default function SelecteurExercice({ exercices, faits, onChoisir, onFermer }: {
+export default function SelecteurExercice({
+  exercices,
+  faits,
+  zonesSensibles = [],
+  onChoisir,
+  onFermer,
+}: {
   exercices: ExoChoix[]
-  faits: Set<string> // exercices déjà faits par ce client (noms normalisés) : proposés en premier
+  faits: Set<string>
+  zonesSensibles?: string[]
   onChoisir: (nom: string) => void
   onFermer: () => void
 }) {
   const [recherche, setRecherche] = useState('')
   const [muscle, setMuscle] = useState('')
-  const large = useEcranLarge() // sur téléphone, on évite d'ouvrir le clavier qui masquerait la liste
+  const large = useEcranLarge()
 
   useEffect(() => {
     const touche = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer() }
@@ -47,14 +54,25 @@ export default function SelecteurExercice({ exercices, faits, onChoisir, onFerme
               </button>
             </li>
           )}
-          {liste.map(e => (
-            <li key={e.nom}>
-              <button type="button" onClick={() => onChoisir(e.nom)}>
-                <span>{e.nom}{faits.has(normaliser(e.nom)) && <span className="puce deja-fait">Déjà fait</span>}</span>
-                <span className="meta">{[e.groupe, e.materiel].filter(Boolean).join(' · ')}</span>
-              </button>
-            </li>
-          ))}
+          {liste.map(e => {
+            const sollicites = e.muscles.filter(m => zonesSensibles.includes(m.muscle))
+            return (
+              <li key={e.nom}>
+                <button type="button" onClick={() => onChoisir(e.nom)}>
+                  <span className="selecteur-ligne-titre">
+                    {e.nom}
+                    {faits.has(normaliser(e.nom)) && <span className="puce deja-fait">Déjà fait</span>}
+                    {sollicites.length > 0 && (
+                      <span className="puce alerte-muscle">
+                        ⚠ Sollicite : {sollicites.map(m => MUSCLES[m.muscle] ?? m.muscle).join(', ')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="meta">{[e.groupe, e.materiel].filter(Boolean).join(' · ')}</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
         {!liste.length && !(q && !existe) && <p className="meta">Aucun exercice ne correspond.</p>}
         <button type="button" className="secondaire" onClick={onFermer}>Fermer</button>

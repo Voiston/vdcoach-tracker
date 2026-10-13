@@ -8,8 +8,16 @@ export type Brouillon = {
   duree: string
   ressenti: string
   notes: string
-  // duree_min et distance_km (cardio) sont facultatifs : absents des brouillons enregistrés avant leur ajout
-  lignes: { nom: string; series: string; repetitions: string; charge_kg: string; duree_min?: string; distance_km?: string }[]
+  lignes: {
+    nom: string
+    series: string
+    repetitions: string
+    charge_kg: string
+    duree_min?: string
+    distance_km?: string
+    reglage?: string
+    lie_suivant?: boolean
+  }[]
   enregistreLe: string
 }
 
@@ -17,14 +25,13 @@ export function effacerBrouillon(clientId: string) {
   try {
     localStorage.removeItem(PREFIXE + clientId)
   } catch {
-    /* stockage indisponible : rien à effacer */
+    /* stockage indisponible */
   }
 }
 
-// À la déconnexion : on n'abandonne pas de notes de clients sur l'appareil
 export function effacerTousBrouillons() {
   try {
-    localStorage.removeItem('vdcoach_brouillon_seance') // ancien format, sans identifiant de client
+    localStorage.removeItem('vdcoach_brouillon_seance')
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const cle = localStorage.key(i)
       if (cle?.startsWith(PREFIXE)) localStorage.removeItem(cle)
@@ -51,6 +58,6 @@ export function ecrireBrouillon(b: Omit<Brouillon, 'enregistreLe'>) {
   try {
     localStorage.setItem(PREFIXE + b.clientId, JSON.stringify({ ...b, enregistreLe: new Date().toISOString() }))
   } catch {
-    /* stockage plein ou indisponible : le brouillon est simplement ignoré */
+    /* stockage plein ou indisponible */
   }
 }
