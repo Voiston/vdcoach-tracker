@@ -8,6 +8,16 @@ const PRESETS = [
   { label: '6m', s: 360 },
 ]
 
+const EVENEMENT_REPOS = 'vdcoach:lancer-repos'
+
+/**
+ * Déclenche immédiatement le minuteur de repos depuis n'importe quel composant (ex. NouvelleSeance).
+ */
+export function lancerMinuteurRepos(dureeSec: number) {
+  if (!dureeSec || dureeSec <= 0) return
+  window.dispatchEvent(new CustomEvent<number>(EVENEMENT_REPOS, { detail: Math.round(dureeSec) }))
+}
+
 function bipSonore() {
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -44,6 +54,26 @@ export default function Chronometre() {
   const [termine, setTermine] = useState(false)
   const refCible = useRef<number>(0) // timestamp de fin (minuteur) ou de départ (chrono)
 
+  function demarrerMinuteur(dureeSec: number) {
+    setMode('minuteur')
+    setTermine(false)
+    refCible.current = Date.now() + dureeSec * 1000
+    setSecondes(dureeSec)
+    setActif(true)
+    setOuvert(true)
+  }
+
+  useEffect(() => {
+    const ecouteur = (e: Event) => {
+      const duree = (e as CustomEvent<number>).detail
+      if (typeof duree === 'number' && duree > 0) {
+        demarrerMinuteur(duree)
+      }
+    }
+    window.addEventListener(EVENEMENT_REPOS, ecouteur)
+    return () => window.removeEventListener(EVENEMENT_REPOS, ecouteur)
+  }, [])
+
   useEffect(() => {
     if (!actif) return
     const id = setInterval(() => {
@@ -53,6 +83,7 @@ export default function Chronometre() {
         if (reste <= 0) {
           setActif(false)
           setTermine(true)
+          setOuvert(true)
           bipSonore()
         }
       } else {
@@ -61,15 +92,6 @@ export default function Chronometre() {
     }, 250)
     return () => clearInterval(id)
   }, [actif, mode])
-
-  function demarrerMinuteur(dureeSec: number) {
-    setMode('minuteur')
-    setTermine(false)
-    refCible.current = Date.now() + dureeSec * 1000
-    setSecondes(dureeSec)
-    setActif(true)
-    setOuvert(true)
-  }
 
   function ajouter15s() {
     if (mode !== 'minuteur') return

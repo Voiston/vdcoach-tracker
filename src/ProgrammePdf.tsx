@@ -24,6 +24,17 @@ type InfoBiblio = { groupe: string; materiel: string; notes: string | null; vide
 const cle = (n: string) => n.trim().toLowerCase()
 const lienSur = (u: string | null | undefined) => (u && /^https?:\/\//i.test(u) ? u : null)
 
+// Résumé de l'effort : répétitions, temps ou cardio, puis la charge si elle est renseignée
+function resumeEffort(l: LigneProgramme): string {
+  const parties: string[] = []
+  const cardio = resumeCardio(l)
+  if (l.repetitions) parties.push(`${l.series ? `${l.series} × ` : ''}${l.repetitions} reps`)
+  else if (cardio) parties.push(cardio)
+  else if (l.series) parties.push(`${l.series} séries`)
+  if (l.charge_kg) parties.push(`${l.charge_kg} kg`)
+  return parties.join(' · ')
+}
+
 function DocumentProgramme({
   titre,
   prenom,
@@ -65,13 +76,7 @@ function DocumentProgramme({
             const video = lienSur(info?.video_url)
             const sup = supersets[i]
             const repos = libelleRepos(l.repos_sec)
-            const cardio = resumeCardio(l)
-            const dosage = cardio
-              ? cardio
-              : [
-                  l.series && l.repetitions ? `${l.series} × ${l.repetitions}` : l.series ? `${l.series} séries` : l.repetitions ? `${l.repetitions} reps` : '',
-                  l.charge_kg ? `${l.charge_kg} kg` : '',
-                ].filter(Boolean).join(' · ')
+            const effort = resumeEffort(l)
 
             const classes = [
               'prog-exo',
@@ -87,9 +92,19 @@ function DocumentProgramme({
                     <strong className="prog-nom">{l.nom}</strong>
                     {info && <small className="prog-meta">{info.groupe} · {info.materiel}</small>}
                   </div>
-                  {dosage && <b className="prog-dosage">{dosage}</b>}
+                  <div style={{ textAlign: 'right' }}>
+                    {effort && (
+                      <div>
+                        <b className="prog-dosage">{effort}</b>
+                      </div>
+                    )}
+                    {repos && (
+                      <div className="prog-meta" style={{ margin: 0, fontSize: '9.5pt', fontWeight: 700, color: 'var(--accent-fonce)' }}>
+                        ⏱ Repos {repos}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {repos && <p className="prog-reglage"><strong>Repos :</strong> {repos}</p>}
                 {l.reglage && <p className="prog-reglage"><strong>Réglage :</strong> {l.reglage}</p>}
                 {info?.notes && <p className="prog-notes">{info.notes}</p>}
                 {video && (

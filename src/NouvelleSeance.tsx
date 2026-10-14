@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { MUSCLES } from './definitions'
 import { analyserSupersets, aujourdhui, courte, dateLocale, libelleRepos, resumeCardio, type InfoSuperset } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
 import { Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
-import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
-import Chronometre from './Chronometre'
+import SelecteurExercice, { normaliser, zonesSensiblesSollicitees, type ExoChoix } from './SelecteurExercice'
+import Chronometre, { lancerMinuteurRepos } from './Chronometre'
+import { lireModelesFavoris } from './Modeles'
 
 // Mesure de l'effort d'un exercice : en répétitions, ou en temps (secondes)
 type Mode = 'reps' | 'temps'
@@ -25,6 +25,7 @@ type Ligne = {
   reglage: string
   lie_suivant: boolean
   valide: boolean
+  passe?: boolean
 }
 type Exo = {
   id: string
@@ -47,12 +48,18 @@ type ValeursExo = {
   repetitions: number | null
   charge_kg: number | null
   duree_sec: number | null
-  duree_min: number | null
+  duree_min: null
   distance_km: number | null
   repos_sec: number | null
   reglage: string | null
   lie_suivant: boolean
 }
+
+// Cible d'ouverture du sélecteur : remplacer une ligne, ajouter à la fin, ou insérer après une ligne précise
+type CibleChoix =
+  | { type: 'remplacer'; index: number }
+  | { type: 'ajout_fin' }
+  | { type: 'inserer_apres'; index: number }
 
 const DUREES_RAPIDES = ['30', '45', '60', '75', '90']
 const REPOS_RAPIDES = [30, 60, 90, 120, 180]
@@ -71,6 +78,7 @@ const vide = (): Ligne => ({
   reglage: '',
   lie_suivant: false,
   valide: false,
+  passe: false,
 })
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
 const txt = (n: number | null | undefined) => (n == null ? '' : String(n))
@@ -94,6 +102,7 @@ const versLignes = (exos: Exo[]): Ligne[] =>
           reglage: x.reglage ?? '',
           lie_suivant: Boolean(x.lie_suivant),
           valide: false,
+          passe: false,
         }))
     : [vide()]
 
@@ -166,12 +175,24 @@ function DerniereFois({ d, temps }: { d: Dernier; temps: boolean }) {
   )
 }
 
-// Temps de repos entre les séries : boutons rapides + saisie libre en secondes
+// Temps de repos entre les séries : boutons rapides + saisie libre en secondes + lancement direct du chrono
 function ChampRepos({ valeur, onChange, erreur }: { valeur: string; onChange: (v: string) => void; erreur?: string }) {
   const actuel = num(valeur)
   return (
     <div className="champ">
-      <span className="champ-libelle">Repos entre les séries</span>
+      <div className="compteur-entete">
+        <span className="champ-libelle">Repos entre les séries</span>
+        {actuel !== null && actuel > 0 && !erreur && (
+          <button
+            type="button"
+            className="secondaire pas-puce actif"
+            title="Lancer le compte à rebours de repos maintenant"
+            onClick={() => lancerMinuteurRepos(actuel)}
+          >
+            ⏱ Lancer {libelleRepos(actuel)}
+          </button>
+        )}
+      </div>
       <div className="durees-rapides">
         {REPOS_RAPIDES.map(s => (
           <button
@@ -218,7 +239,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const zonesSensibles = client.zones_sensibles ?? []
   const notifier = useNotifier()
   const [feuilleModele, setFeuilleModele] = useState(false)
-  const [choix, setChoix] = useState<number | 'ajout' | null>(null)
+  const [modeleChargeId, setModeleChargeId] = useState<string | null>(null)
+  const [choix, setChoix] = useState<CibleChoix | null>(null)
+  const [conserverParametres, setConserverParametres] = useState(true)
   const [reglagesOuverts, setReglagesOuverts] = useState<Record<number, boolean>>({})
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
   const [date, setDate] = useState(aujourdhui())
@@ -232,6 +255,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [anciens, setAnciens] = useState<string[]>([])
   const [noms, setNoms] = useState<string[]>([])
   const [modeles, setModeles] = useState<{ id: string; nom: string }[]>([])
+  const [modelesFavIds, setModelesFavIds] = useState<Set<string>>(() => lireModelesFavoris())
   const [recentes, setRecentes] = useState<SeanceRecente[]>([])
   const [derniers, setDerniers] = useState<Record<string, Dernier>>({})
   const [biblio, setBiblio] = useState<Record<string, Fiche>>({})
@@ -240,6 +264,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [autres, setAutres] = useState<{ id: string; prenom: string; nom: string | null; groupe_facturation: string | null }[]>([])
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
+
+  // Mode Terrain : un seul exercice déplié à la fois + barre de pilotage mobile
+  const [modeTerrain, setModeTerrain] = useState(false)
+  const [indexTerrain, setIndexTerrain] = useState(0)
 
   // Seuls les exercices du groupe « Cardio » ont une distance
   const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
@@ -278,6 +306,35 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       reglage: d?.reglage ?? '',
       lie_suivant: false,
       valide: false,
+      passe: false,
+    }
+  }
+
+  /**
+   * Remplacement intelligent : conserve les séries, répétitions/durée, repos et superset
+   * planifiés sur la ligne remplacée, mais injecte la charge et le réglage connus du nouvel exercice.
+   */
+  function remplacerLigneIntelligente(ancienne: Ligne, nouveauNom: string): Ligne {
+    if (!ancienne.nom.trim() || !conserverParametres) {
+      return { ...creerLignePreRemplie(nouveauNom), lie_suivant: ancienne.lie_suivant }
+    }
+    const d = derniers[cle(nouveauNom)]
+    const cardio = estCardio(nouveauNom)
+    const nouveauMode: Mode = cardio ? 'temps' : ancienne.mode
+    return {
+      ...ancienne,
+      nom: nouveauNom,
+      mode: nouveauMode,
+      series: ancienne.series || txt(d?.series ?? 3),
+      repetitions: nouveauMode === 'temps' ? '' : ancienne.repetitions || txt(d?.repetitions ?? 10),
+      duree_sec: nouveauMode === 'temps' ? ancienne.duree_sec || txt(d?.duree_sec ?? 30) : ancienne.duree_sec,
+      charge_kg: cardio ? '' : txt(d?.charge_kg),
+      distance_km: cardio ? txt(d?.distance_km) || ancienne.distance_km : '',
+      repos_sec: ancienne.repos_sec || txt(d?.repos_sec),
+      reglage: d?.reglage ?? '',
+      lie_suivant: ancienne.lie_suivant,
+      valide: false,
+      passe: false,
     }
   }
 
@@ -315,14 +372,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }, [seanceId])
 
   useEffect(() => {
-    supabase.from('modeles').select('id, nom').order('nom').then(({ data }) => setModeles(data ?? []))
+    supabase.from('modeles').select('id, nom').order('nom').then(({ data }) => {
+      setModeles(data ?? [])
+      setModelesFavIds(lireModelesFavoris())
+    })
   }, [])
 
   async function appliquerModele(id: string) {
     if (!id) return
     const { data, error } = await supabase
       .from('modeles')
-      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)')
+      .select('id, nom, duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)')
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
@@ -341,6 +401,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       }
     })
     setLignes(nouvelles)
+    setModeleChargeId(data.id as string)
+    setIndexTerrain(0)
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
   }
@@ -364,7 +426,33 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       return messageErreur(erreurExos)
     }
     setModeles(m => [...m, data].sort((a, b) => a.nom.localeCompare(b.nom)))
+    setModeleChargeId(data.id as string)
     notifier(`Modèle « ${nom} » enregistré`)
+  }
+
+  async function mettreAJourModeleCharge() {
+    if (!modeleChargeId) return
+    const modeleActuel = modeles.find(m => m.id === modeleChargeId)
+    const exos = lignes.filter(l => l.nom.trim())
+    if (!exos.length) return setErreur('Ajoute au moins un exercice pour mettre à jour le modèle.')
+
+    const { error: errMaj } = await supabase.from('modeles').update({ duree_min: num(duree) }).eq('id', modeleChargeId)
+    if (errMaj) return setErreur(messageErreur(errMaj))
+
+    const { error: errSuppr } = await supabase.from('modele_exercices').delete().eq('modele_id', modeleChargeId)
+    if (errSuppr) return setErreur(messageErreur(errSuppr))
+
+    const { error: errInsert } = await supabase.from('modele_exercices').insert(
+      exos.map((l, i) => ({
+        modele_id: modeleChargeId,
+        ordre: i,
+        nom: l.nom.trim(),
+        ...valeurs(l),
+        lie_suivant: i < exos.length - 1 ? l.lie_suivant : false,
+      })),
+    )
+    if (errInsert) return setErreur(messageErreur(errInsert))
+    notifier(`Modèle « ${modeleActuel?.nom ?? ''} » mis à jour`)
   }
 
   useEffect(() => {
@@ -474,7 +562,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setLignes(
       brouillon.lignes.length
         ? brouillon.lignes.map(l => {
-            // Les brouillons plus anciens n'ont pas de mode : on le déduit des valeurs saisies
             const ancien = l as typeof l & { mode?: Mode }
             const reps = l.repetitions.trim()
             const duree = (l.duree_sec ?? '').trim()
@@ -496,29 +583,49 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   function choisirUnExercice(nom: string) {
-    const nouvelle = creerLignePreRemplie(nom)
-    if (choix === 'ajout') {
+    if (!choix) return
+    if (choix.type === 'ajout_fin') {
+      const nouvelle = creerLignePreRemplie(nom)
       setLignes(l => {
         const sansVide = l.filter(x => x.nom.trim() !== '')
         return [...sansVide, nouvelle]
       })
-    } else if (typeof choix === 'number') {
-      setLignes(l => l.map((x, j) => (j === choix ? { ...nouvelle, lie_suivant: x.lie_suivant } : x)))
+    } else if (choix.type === 'inserer_apres') {
+      const nouvelle = creerLignePreRemplie(nom)
+      setLignes(l => {
+        const copie = [...l]
+        copie.splice(choix.index + 1, 0, nouvelle)
+        return copie
+      })
+      if (modeTerrain) setIndexTerrain(choix.index + 1)
+    } else if (choix.type === 'remplacer') {
+      setLignes(l => l.map((x, j) => (j === choix.index ? remplacerLigneIntelligente(x, nom) : x)))
     }
     setChoix(null)
   }
 
   function choisirPlusieursExercices(nomsChoisis: string[]) {
     const nouvelles = nomsChoisis.map(creerLignePreRemplie)
-    setLignes(l => {
-      const sansVide = l.filter(x => x.nom.trim() !== '')
-      return [...sansVide, ...nouvelles]
-    })
+    if (choix?.type === 'inserer_apres') {
+      const idx = choix.index
+      setLignes(l => {
+        const copie = [...l]
+        copie.splice(idx + 1, 0, ...nouvelles)
+        return copie
+      })
+      if (modeTerrain) setIndexTerrain(idx + 1)
+    } else {
+      setLignes(l => {
+        const sansVide = l.filter(x => x.nom.trim() !== '')
+        return [...sansVide, ...nouvelles]
+      })
+    }
     setChoix(null)
   }
 
   function retirer(i: number) {
     setLignes(l => (l.length > 1 ? l.filter((_, j) => j !== i) : [vide()]))
+    if (indexTerrain >= lignes.length - 1) setIndexTerrain(Math.max(0, lignes.length - 2))
   }
 
   function deplacer(i: number, delta: -1 | 1) {
@@ -530,12 +637,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       copie.splice(cible, 0, elem)
       return copie
     })
+    if (modeTerrain && indexTerrain === i) setIndexTerrain(cible)
   }
 
   function dupliquer(i: number) {
     setLignes(l => {
       const copie = [...l]
-      copie.splice(i + 1, 0, { ...l[i], valide: false })
+      copie.splice(i + 1, 0, { ...l[i], valide: false, passe: false })
       return copie
     })
   }
@@ -580,28 +688,30 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     )
   }
 
-  function progresser(i: number) {
-    const x = lignes[i]
-    const d = derniers[cle(x.nom)]
-    if (!d) return
-    const temps = estTemps(x)
-    const cardio = estCardio(x.nom)
+  function appliquerProgressionLigne(y: Ligne): Ligne {
+    const d = derniers[cle(y.nom)]
+    if (!d) return y
+    const temps = estTemps(y)
+    const cardio = estCardio(y.nom)
     const p = proposition(d, temps)
-    if (!p) return
-    setLignes(l =>
-      l.map((y, j) =>
-        j !== i
-          ? y
-          : {
-              ...y,
-              series: p.series != null ? txt(p.series) : y.series,
-              repetitions: temps || p.repetitions == null ? y.repetitions : txt(p.repetitions),
-              duree_sec: temps && p.duree_sec != null ? txt(p.duree_sec) : y.duree_sec,
-              charge_kg: cardio ? y.charge_kg : txt(p.charge_kg),
-              reglage: y.reglage.trim() || d.reglage || '',
-            },
-      ),
-    )
+    if (!p) return y
+    return {
+      ...y,
+      series: p.series != null ? txt(p.series) : y.series,
+      repetitions: temps || p.repetitions == null ? y.repetitions : txt(p.repetitions),
+      duree_sec: temps && p.duree_sec != null ? txt(p.duree_sec) : y.duree_sec,
+      charge_kg: cardio ? y.charge_kg : txt(p.charge_kg),
+      reglage: y.reglage.trim() || d.reglage || '',
+    }
+  }
+
+  function progresser(i: number) {
+    setLignes(l => l.map((y, j) => (j === i ? appliquerProgressionLigne(y) : y)))
+  }
+
+  function progresserTouteLaSeance() {
+    setLignes(l => l.map(appliquerProgressionLigne))
+    notifier('Progression appliquée à toute la séance')
   }
 
   function maj<K extends keyof Ligne>(i: number, champ: K, valeur: Ligne[K]) {
@@ -610,8 +720,68 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   function reprendreSeance(s: SeanceRecente) {
     setLignes(versLignes(s.exercices))
+    setModeleChargeId(null)
+    setIndexTerrain(0)
     if (s.duree_min) setDuree(txt(s.duree_min))
     setErreur('')
+  }
+
+  /* ---------- Pilotage Mode Terrain & Déclenchement automatique du repos ---------- */
+  function scrollerVersExercice(idx: number) {
+    setTimeout(() => {
+      document.getElementById(`exo-carte-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 60)
+  }
+
+  function trouverProchainExercice(depuis: number, etatLignes: Ligne[]): number {
+    for (let k = depuis + 1; k < etatLignes.length; k++) {
+      if (!etatLignes[k].valide && !etatLignes[k].passe) return k
+    }
+    const nonFait = etatLignes.findIndex((l, k) => k !== depuis && !l.valide)
+    return nonFait !== -1 ? nonFait : depuis
+  }
+
+  function declencherReposSiPrevu(ligne: Ligne | undefined) {
+    if (!ligne) return
+    const sec = num(ligne.repos_sec)
+    if (sec !== null && sec > 0) {
+      lancerMinuteurRepos(sec)
+    }
+  }
+
+  function validerExerciceSimple(i: number) {
+    declencherReposSiPrevu(lignes[i])
+    maj(i, 'valide', true)
+  }
+
+  function validerTerrainEtAvancer(i: number) {
+    declencherReposSiPrevu(lignes[i])
+    const prochaines = lignes.map((x, j) => (j === i ? { ...x, valide: true, passe: false } : x))
+    setLignes(prochaines)
+    const suivant = trouverProchainExercice(i, prochaines)
+    setIndexTerrain(suivant)
+    if (suivant !== i) scrollerVersExercice(suivant)
+  }
+
+  function passerExerciceTerrain(i: number) {
+    const prochaines = lignes.map((x, j) => (j === i ? { ...x, passe: true, valide: false } : x))
+    setLignes(prochaines)
+    const suivant = trouverProchainExercice(i, prochaines)
+    setIndexTerrain(suivant)
+    if (suivant !== i) scrollerVersExercice(suivant)
+  }
+
+  function basculerModeTerrain() {
+    setModeTerrain(actuel => {
+      const prochain = !actuel
+      if (prochain) {
+        const premierNonFait = lignes.findIndex(l => !l.valide)
+        const cible = premierNonFait !== -1 ? premierNonFait : 0
+        setIndexTerrain(cible)
+        scrollerVersExercice(cible)
+      }
+      return prochain
+    })
   }
 
   function echec(message: string) {
@@ -728,6 +898,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   ]
   const faits = new Set(Object.keys(derniers).map(normaliser))
   const saisis = lignes.filter(l => l.nom.trim())
+  const nbTermines = saisis.filter(l => l.valide).length
+  const peutToutProgresser = saisis.some(l => {
+    const d = derniers[cle(l.nom)]
+    return d ? Boolean(proposition(d, estTemps(l))) : false
+  })
+  const modelesFavoris = modeles.filter(m => modelesFavIds.has(m.id))
   const nbSeries = saisis.reduce((total, l) => {
     const n = valeurs(l).series
     return total + (n && !Number.isNaN(n) ? n : 0)
@@ -747,10 +923,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         (estTemps(l) ? verifier(l.duree_sec, REGLES.duree_sec) : verifier(l.repetitions, REGLES.repetitions)),
     )
 
+  const ligneTerrainCourante = lignes[indexTerrain] ?? lignes[0]
+  const reposTerrainSec = num(ligneTerrainCourante?.repos_sec ?? '')
+  const supTerrainCourant = supersets[indexTerrain]
+  const exoRemplaceNom = choix?.type === 'remplacer' ? lignes[choix.index]?.nom.trim() || null : null
+
   return (
     <>
       <Chronometre />
-      <form onSubmit={enregistrer}>
+      <form onSubmit={enregistrer} className={modeTerrain ? 'avec-barre-terrain' : undefined}>
         {brouillon && (
           <div className="brouillon" role="status">
             <p>
@@ -823,7 +1004,32 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           </div>
         )}
 
-        <h3>Exercices</h3>
+        <div className="entete-exercices-terrain">
+          <h3>Exercices</h3>
+          <div className="actions-entete-exos">
+            {peutToutProgresser && (
+              <button
+                type="button"
+                className="secondaire btn-compact"
+                title="Appliquer la progression automatique sur tous les exercices"
+                onClick={progresserTouteLaSeance}
+              >
+                ↑ Tout progresser
+              </button>
+            )}
+            {saisis.length > 0 && (
+              <button
+                type="button"
+                className={`btn-compact ${modeTerrain ? '' : 'secondaire'}`}
+                aria-pressed={modeTerrain}
+                onClick={basculerModeTerrain}
+              >
+                ⚡ Mode Terrain {modeTerrain ? `(${nbTermines}/${saisis.length})` : ''}
+              </button>
+            )}
+          </div>
+        </div>
+
         {!seanceId && (recentes.length > 0 || modeles.length > 0) && (
           <div className="raccourcis-seance">
             {recentes.length > 0 && (
@@ -836,10 +1042,29 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 ))}
               </div>
             )}
+            {modelesFavoris.length > 0 && (
+              <div className="puces">
+                <span className="meta">★ Favoris :</span>
+                {modelesFavoris.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`puce-choix${modeleChargeId === m.id ? ' actif' : ''}`}
+                    onClick={() => appliquerModele(m.id)}
+                  >
+                    ★ {m.nom}
+                  </button>
+                ))}
+              </div>
+            )}
             {modeles.length > 0 && (
-              <select value="" onChange={e => appliquerModele(e.target.value)}>
+              <select value={modeleChargeId ?? ''} onChange={e => appliquerModele(e.target.value)}>
                 <option value="">Charger un modèle…</option>
-                {modeles.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+                {modeles.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {modelesFavIds.has(m.id) ? `★ ${m.nom}` : m.nom}
+                  </option>
+                ))}
               </select>
             )}
           </div>
@@ -853,41 +1078,82 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           const prop = dernier ? proposition(dernier, temps) : null
           const sup = supersets[i]
           const lieAvecSuivant = l.lie_suivant && i < lignes.length - 1
+          const estFocusTerrain = modeTerrain && i === indexTerrain
+          const replieParTerrain = modeTerrain && i !== indexTerrain && Boolean(l.nom.trim())
+          const estReplie = (l.valide || replieParTerrain) && Boolean(l.nom.trim())
+
           const classes = [
             'exercice',
             sup.groupe !== null ? `superset-groupe grp-sup-${sup.groupe}` : '',
             lieAvecSuivant ? 'lie-suivant' : '',
+            estFocusTerrain ? 'focus-terrain' : '',
+            l.passe && !l.valide ? 'exo-passe' : '',
           ].filter(Boolean).join(' ')
-          const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
+
+          const alertesZones = l.nom.trim()
+            ? zonesSensiblesSollicitees(
+                { nom: l.nom, groupe: fiche?.groupe, muscles: fiche?.exercice_muscles ?? [] },
+                zonesSensibles,
+              )
+            : []
           const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
 
-          if (l.valide && l.nom.trim()) {
-            const resumeCompact = temps
-              ? [
-                  resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) }),
-                  l.charge_kg ? `@ ${l.charge_kg} kg` : '',
-                ].filter(Boolean).join(' ')
-              : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
-                  .filter(Boolean)
-                  .join(' ')
-            const reposTxt = libelleRepos(num(l.repos_sec))
+          const resumeCompact = temps
+            ? [
+                resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) }),
+                l.charge_kg ? `@ ${l.charge_kg} kg` : '',
+              ].filter(Boolean).join(' ')
+            : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
+                .filter(Boolean)
+                .join(' ')
+          const reposTxt = libelleRepos(num(l.repos_sec))
+
+          if (estReplie) {
             return (
-              <div className={`${classes} compact`} key={i}>
+              <div id={`exo-carte-${i}`} className={`${classes} compact`} key={i}>
                 <div className="exercice-entete">
                   <button
                     type="button"
-                    className="btn-valide actif"
-                    aria-label="Déplier cet exercice"
-                    onClick={() => maj(i, 'valide', false)}
+                    className={`btn-valide${l.valide ? ' actif' : l.passe ? ' passe' : ''}`}
+                    aria-label={l.valide ? 'Déplier cet exercice' : 'Marquer cet exercice comme fait'}
+                    onClick={() => {
+                      if (modeTerrain && !l.valide) {
+                        validerTerrainEtAvancer(i)
+                      } else {
+                        if (!l.valide) declencherReposSiPrevu(l)
+                        maj(i, 'valide', !l.valide)
+                        if (modeTerrain) setIndexTerrain(i)
+                      }
+                    }}
                   >
-                    ✓
+                    {l.valide ? '✓' : l.passe ? '⏭' : i + 1}
                   </button>
                   {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
-                  <button type="button" className="exercice-compact-texte" onClick={() => maj(i, 'valide', false)}>
+                  <button
+                    type="button"
+                    className="exercice-compact-texte"
+                    onClick={() => {
+                      if (modeTerrain) {
+                        setIndexTerrain(i)
+                      } else {
+                        maj(i, 'valide', false)
+                      }
+                    }}
+                  >
                     <strong>{l.nom}</strong>
                     {resumeCompact && <span> — {resumeCompact}</span>}
                     {reposTxt && <small className="meta"> · repos {reposTxt}</small>}
                     {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
+                    {l.passe && !l.valide && <span className="puce alerte-muscle" style={{ marginLeft: '.35rem' }}>En attente</span>}
+                  </button>
+                  <button
+                    type="button"
+                    className="lien outil"
+                    title="Remplacer cet exercice (équivalents)"
+                    aria-label={`Remplacer ${l.nom}`}
+                    onClick={() => setChoix({ type: 'remplacer', index: i })}
+                  >
+                    ⇄
                   </button>
                   <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
                 </div>
@@ -896,15 +1162,32 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           }
 
           return (
-            <div className={classes} key={i}>
+            <div id={`exo-carte-${i}`} className={classes} key={i}>
+              {estFocusTerrain && (
+                <div className="bandeau-focus-terrain">
+                  <span>
+                    ⚡ <strong>Exercice {i + 1} / {lignes.length}</strong>
+                    {sup.etiquette ? ` · Superset ${sup.etiquette}` : ''}
+                  </span>
+                  <div className="ligne">
+                    <button type="button" className="secondaire btn-compact" onClick={() => passerExerciceTerrain(i)}>
+                      ⏭ Passer
+                    </button>
+                    <button type="button" className="btn-compact" onClick={() => validerTerrainEtAvancer(i)}>
+                      ✓ Fait & Suivant
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="exercice-entete">
                 {l.nom.trim() && (
                   <button
                     type="button"
-                    className="btn-valide"
-                    title="Marquer comme fait et replier"
+                    className={`btn-valide${l.valide ? ' actif' : ''}`}
+                    title="Marquer comme fait, lancer le repos et replier"
                     aria-label="Marquer cet exercice comme fait et replier"
-                    onClick={() => maj(i, 'valide', true)}
+                    onClick={() => (modeTerrain ? validerTerrainEtAvancer(i) : validerExerciceSimple(i))}
                   >
                     ✓
                   </button>
@@ -913,18 +1196,28 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 <button
                   type="button"
                   className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
-                  onClick={() => setChoix(i)}
-                  aria-label={l.nom.trim() ? `Changer l'exercice : ${l.nom}` : 'Choisir un exercice'}
+                  onClick={() => setChoix({ type: 'remplacer', index: i })}
+                  aria-label={l.nom.trim() ? `Remplacer l'exercice : ${l.nom}` : 'Choisir un exercice'}
                 >
-                  {l.nom.trim() || 'Choisir un exercice…'}
+                  <span>{l.nom.trim() || 'Choisir un exercice…'}</span>
+                  {l.nom.trim() && <span className="badge-swap-inline">⇄ Remplacer</span>}
                 </button>
                 <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
               </div>
 
-              {sollicitesSensibles.length > 0 && (
+              {alertesZones.length > 0 && (
                 <p className="alerte-zone" role="status">
                   ⚠ Sollicite une zone sensible de {client.prenom} :{' '}
-                  <strong>{sollicitesSensibles.map(m => MUSCLES[m.muscle] ?? m.muscle).join(', ')}</strong>
+                  <strong>{alertesZones.join(', ')}</strong>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="lien"
+                    style={{ minHeight: 'auto', padding: '0 .25rem', textDecoration: 'underline' }}
+                    onClick={() => setChoix({ type: 'remplacer', index: i })}
+                  >
+                    Voir les alternatives adaptées →
+                  </button>
                 </p>
               )}
 
@@ -1065,6 +1358,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     {l.lie_suivant ? '⛓ Superset actif' : '+ Superset'}
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="lien superset-lien"
+                  title="Insérer un exercice juste en dessous"
+                  onClick={() => setChoix({ type: 'inserer_apres', index: i })}
+                >
+                  +↓ Insérer dessous
+                </button>
                 <div className="exercice-outils">
                   {i > 0 && (
                     <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
@@ -1082,11 +1383,16 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         })}
 
         <div className="ligne" style={{ flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => setChoix('ajout')} style={{ flex: 2 }}>
+          <button type="button" onClick={() => setChoix({ type: 'ajout_fin' })} style={{ flex: 2 }}>
             + Ajouter des exercices
           </button>
+          {modeleChargeId && (
+            <button type="button" className="secondaire" onClick={mettreAJourModeleCharge} style={{ flex: 1 }}>
+              Mettre à jour le modèle
+            </button>
+          )}
           <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)} style={{ flex: 1 }}>
-            Créer un modèle
+            {modeleChargeId ? 'Nouveau modèle' : 'Créer un modèle'}
           </button>
         </div>
 
@@ -1113,12 +1419,86 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         </div>
       </form>
 
+      {/* Barre de pilotage fixe du Mode Terrain sur Smartphone */}
+      {modeTerrain && lignes.length > 0 && (
+        <div className="barre-pilotage-terrain" role="region" aria-label="Pilotage Mode Terrain">
+          <div className="pilotage-terrain-entete">
+            <span className="pilotage-terrain-titre">
+              <span className="puce superset-badge">
+                {supTerrainCourant?.etiquette ?? `${indexTerrain + 1}/${lignes.length}`}
+              </span>
+              <strong>{ligneTerrainCourante?.nom.trim() || 'Exercice à choisir'}</strong>
+            </span>
+            <div className="ligne" style={{ gap: '.35rem' }}>
+              {reposTerrainSec !== null && reposTerrainSec > 0 && (
+                <button
+                  type="button"
+                  className="secondaire pas-puce actif"
+                  title="Relancer le repos entre deux séries"
+                  onClick={() => lancerMinuteurRepos(reposTerrainSec)}
+                >
+                  ⏱ {libelleRepos(reposTerrainSec)}
+                </button>
+              )}
+              <span className="meta">
+                {nbTermines}/{saisis.length}
+              </span>
+            </div>
+          </div>
+          <div className="pilotage-terrain-actions">
+            <button
+              type="button"
+              className="btn-terrain-valider"
+              onClick={() => validerTerrainEtAvancer(indexTerrain)}
+            >
+              ✓ Fait & Suivant
+            </button>
+            <button
+              type="button"
+              className="secondaire"
+              onClick={() => setChoix({ type: 'remplacer', index: indexTerrain })}
+            >
+              ⇄ Remplacer
+            </button>
+            <button
+              type="button"
+              className="secondaire"
+              onClick={() => passerExerciceTerrain(indexTerrain)}
+            >
+              ⏭ Passer
+            </button>
+          </div>
+          <div className="pilotage-terrain-pastilles" role="tablist" aria-label="Navigation rapide exercices">
+            {lignes.map((l, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={[
+                  'pastille-exo',
+                  idx === indexTerrain ? 'actif' : '',
+                  l.valide ? 'fait' : l.passe ? 'passe' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => {
+                  setIndexTerrain(idx)
+                  scrollerVersExercice(idx)
+                }}
+              >
+                {supTerrainCourant && supersets[idx]?.etiquette ? supersets[idx].etiquette : idx + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {choix !== null && (
         <SelecteurExercice
           exercices={choixExercices}
           faits={faits}
           zonesSensibles={zonesSensibles}
-          multiple={choix === 'ajout'}
+          multiple={choix.type !== 'remplacer'}
+          remplacementDe={exoRemplaceNom}
+          conserverParametres={conserverParametres}
+          onChangeConserverParametres={setConserverParametres}
           onChoisir={choisirUnExercice}
           onChoisirMultiple={choisirPlusieursExercices}
           onFermer={() => setChoix(null)}
