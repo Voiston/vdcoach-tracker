@@ -11,6 +11,10 @@
   --trait: #e3e9e6; --bord: #d3ddd8;
   --accent: #2f7d6b; --accent-fonce: #25665a; --accent-doux: #dcefe8;
   --succes: #2e7d4f; --danger: #b3392f;
+  /* Couleurs des supersets, en clair (utilisées par .grp-sup-N défini dans styles.css) */
+  --sup-0: #2f7d6b; --sup-1: #b8651a; --sup-2: #7553c4;
+  --sup-3: #2a6db0; --sup-4: #b93a78; --sup-5: #8c7412;
+  --sup-on: #ffffff;
   color: var(--encre);
   background: #fff;
   font-size: 10pt;
@@ -181,7 +185,16 @@
 .prog-exo.lie-suivant { margin-bottom: -1.5mm; border-left: 1.2mm solid var(--accent); border-bottom-style: dashed; }
 .prog-exo.lie-suivant + .prog-exo { border-left: 1.2mm solid var(--accent); }
 .prog-exo-entete { display: flex; justify-content: space-between; align-items: baseline; gap: 4mm; width: 100%; }
-.prog-num { display: inline-block; margin-right: 2mm; padding: .5mm 2mm; font-size: 8.5pt; font-weight: 700; color: #fff; background: var(--accent); border-radius: 99px; }
+/* Supersets : couleur propre à chaque groupe (la règle est placée après les précédentes pour les emporter) */
+.prog-liste .prog-exo.superset-groupe {
+  border-left: 1.2mm solid var(--sup);
+  background: color-mix(in srgb, var(--sup) 6%, #fff);
+}
+.prog-liste .prog-exo.superset-groupe.lie-suivant {
+  margin-bottom: -1.5mm;
+  border-bottom-style: dashed;
+}
+.prog-num { display: inline-block; margin-right: 2mm; padding: .5mm 2mm; font-size: 8.5pt; font-weight: 700; color: var(--sup-on); background: var(--sup, var(--accent)); border-radius: 99px; }
 .prog-nom { font-size: 11pt; }
 .prog-meta { margin-left: 2mm; font-size: 8.5pt; color: var(--discret); }
 .prog-dosage { font-family: var(--titre); font-size: 12pt; color: var(--accent-fonce); white-space: nowrap; }

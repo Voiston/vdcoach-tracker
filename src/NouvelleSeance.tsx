@@ -3,15 +3,19 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { MUSCLES } from './definitions'
-import { aujourdhui, courte, dateLocale, etiquettesSuperset, resumeCardio } from './format'
+import { analyserSupersets, aujourdhui, courte, dateLocale, resumeCardio, type InfoSuperset } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
 import { Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
 import SelecteurExercice, { normaliser, type ExoChoix } from './SelecteurExercice'
 import Chronometre from './Chronometre'
 
+// Mesure de l'effort d'un exercice : en répétitions, ou en temps (secondes)
+type Mode = 'reps' | 'temps'
+
 type Ligne = {
   nom: string
+  mode: Mode
   series: string
   repetitions: string
   charge_kg: string
@@ -36,12 +40,24 @@ type Exo = {
 }
 type SeanceRecente = { id: string; date_seance: string; duree_min: number | null; exercices: Exo[] }
 
+type ValeursExo = {
+  series: number | null
+  repetitions: number | null
+  charge_kg: number | null
+  duree_sec: number | null
+  duree_min: number | null
+  distance_km: number | null
+  reglage: string | null
+  lie_suivant: boolean
+}
+
 const DUREES_RAPIDES = ['30', '45', '60', '75', '90']
 const PAS_CHARGE = [1, 2.5, 5, 10]
 const PAS_SECONDES = [5, 10, 15, 30, 60]
 
 const vide = (): Ligne => ({
   nom: '',
+  mode: 'reps',
   series: '',
   repetitions: '',
   charge_kg: '',
@@ -62,6 +78,8 @@ const versLignes = (exos: Exo[]): Ligne[] =>
         .sort((a, b) => a.ordre - b.ordre)
         .map(x => ({
           nom: x.nom,
+          // Pas de répétitions mais une durée enregistrée : l'exercice se fait au temps
+          mode: (x.repetitions == null && secDe(x) != null ? 'temps' : 'reps') as Mode,
           series: txt(x.series),
           repetitions: txt(x.repetitions),
           charge_kg: txt(x.charge_kg),
@@ -74,6 +92,8 @@ const versLignes = (exos: Exo[]): Ligne[] =>
     : [vide()]
 
 const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)'
+
+// Règle de progression simple (double progression) : à modifier selon ta façon de coacher.
 const PLAFOND_REPS = 12
 const PAS_KG = 2.5
 
@@ -86,23 +106,27 @@ type Dernier = {
   distance_km: number | null
   reglage: string | null
 }
+type Proposition = {
+  series: number | null
+  repetitions: number | null
+  charge_kg: number | null
+  duree_sec: number | null
+}
+
 const cle = (nom: string) => nom.trim().toLowerCase()
 const echapper = (nom: string) => nom.replace(/[\\%_]/g, '\\$&')
 
-function suggestion(d: Dernier, cardio: boolean): string {
-  if (cardio) {
-    if (d.duree_sec !== null) return `vise ${d.duree_sec + 5} s`
-    return ''
-  }
+function suggestion(d: Dernier, temps: boolean): string {
+  if (temps) return d.duree_sec !== null ? `vise ${d.duree_sec + 5} s` : ''
   if (d.repetitions === null) return ''
   if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) return `essaie ${+(Number(d.charge_kg) + PAS_KG).toFixed(2)} kg`
   return `vise ${d.repetitions + 1} reps${d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}`
 }
 
-function proposition(d: Dernier, cardio: boolean) {
-  if (cardio) {
+function proposition(d: Dernier, temps: boolean): Proposition | null {
+  if (temps) {
     if (d.duree_sec === null) return null
-    return { series: d.series ?? 3, repetitions: null, charge_kg: null, duree_sec: d.duree_sec + 5 }
+    return { series: d.series, repetitions: null, charge_kg: d.charge_kg, duree_sec: d.duree_sec + 5 }
   }
   if (d.repetitions === null) return null
   if (d.charge_kg !== null && d.repetitions >= PLAFOND_REPS) {
@@ -111,15 +135,17 @@ function proposition(d: Dernier, cardio: boolean) {
   return { series: d.series, repetitions: d.repetitions + 1, charge_kg: d.charge_kg, duree_sec: null }
 }
 
-function DerniereFois({ d, cardio }: { d: Dernier; cardio: boolean }) {
+function DerniereFois({ d, temps }: { d: Dernier; temps: boolean }) {
   const date = dateLocale(d.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-  const conseil = suggestion(d, cardio)
-  if (cardio) {
+  const conseil = suggestion(d, temps)
+  const reglage = d.reglage ? ` · ⚙ ${d.reglage}` : ''
+  if (temps) {
     return (
       <p className="meta">
         Dernière fois ({date}) : {resumeCardio(d) || '?'}
+        {d.charge_kg !== null ? ` · ${d.charge_kg} kg` : ''}
         {conseil ? ` · ${conseil}` : ''}
-        {d.reglage ? ` · ⚙ ${d.reglage}` : ''}
+        {reglage}
       </p>
     )
   }
@@ -128,7 +154,7 @@ function DerniereFois({ d, cardio }: { d: Dernier; cardio: boolean }) {
       Dernière fois ({date}) : {d.series ?? '?'}×{d.repetitions ?? '?'}
       {d.charge_kg !== null ? ` à ${d.charge_kg} kg` : ''}
       {conseil ? ` · ${conseil}` : ''}
-      {d.reglage ? ` · ⚙ ${d.reglage}` : ''}
+      {reglage}
     </p>
   )
 }
@@ -176,40 +202,41 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
 
-  const estCardio = (nom: string, l?: Ligne) =>
-    biblio[cle(nom)]?.groupe === 'Cardio' || Boolean(l && (l.duree_sec.trim() || l.distance_km.trim()) && !l.repetitions.trim())
+  // Seuls les exercices du groupe « Cardio » ont une distance
+  const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
+  // Temps = exercice cardio, ou exercice basculé en mode « Temps »
+  const estTemps = (l: Ligne) => estCardio(l.nom) || l.mode === 'temps'
 
-  const valeurs = (l: Ligne) => ({
-    series: num(l.series),
-    ...(estCardio(l.nom, l)
-      ? { repetitions: null, charge_kg: null, duree_sec: num(l.duree_sec), duree_min: null, distance_km: num(l.distance_km) }
-      : { repetitions: num(l.repetitions), charge_kg: num(l.charge_kg), duree_sec: null, duree_min: null, distance_km: null }),
-    reglage: l.reglage.trim() || null,
-    lie_suivant: l.lie_suivant,
-  })
+  const valeurs = (l: Ligne): ValeursExo => {
+    const cardio = estCardio(l.nom)
+    const temps = estTemps(l)
+    return {
+      series: num(l.series),
+      repetitions: temps ? null : num(l.repetitions),
+      charge_kg: cardio ? null : num(l.charge_kg),
+      duree_sec: temps ? num(l.duree_sec) : null,
+      duree_min: null,
+      distance_km: cardio ? num(l.distance_km) : null,
+      reglage: l.reglage.trim() || null,
+      lie_suivant: l.lie_suivant,
+    }
+  }
 
   function creerLignePreRemplie(nom: string): Ligne {
     const d = derniers[cle(nom)]
     const cardio = estCardio(nom)
-    if (d) {
-      return {
-        nom,
-        series: txt(d.series ?? 3),
-        repetitions: cardio ? '' : txt(d.repetitions ?? 10),
-        charge_kg: cardio ? '' : txt(d.charge_kg),
-        duree_sec: cardio ? txt(d.duree_sec ?? 30) : '',
-        distance_km: cardio ? txt(d.distance_km) : '',
-        reglage: d.reglage ?? '',
-        lie_suivant: false,
-        valide: false,
-      }
-    }
+    const mode: Mode = cardio || (d && d.repetitions === null && d.duree_sec !== null) ? 'temps' : 'reps'
     return {
-      ...vide(),
       nom,
-      series: '3',
-      repetitions: cardio ? '' : '10',
-      duree_sec: cardio ? '30' : '',
+      mode,
+      series: txt(d?.series ?? 3),
+      repetitions: txt(d?.repetitions ?? (cardio ? null : 10)),
+      charge_kg: cardio ? '' : txt(d?.charge_kg),
+      duree_sec: txt(d?.duree_sec ?? 30),
+      distance_km: cardio ? txt(d?.distance_km) : '',
+      reglage: d?.reglage ?? '',
+      lie_suivant: false,
+      valide: false,
     }
   }
 
@@ -260,13 +287,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
     const nouvelles = versLignes(data.modele_exercices as Exo[]).map(l => {
       const d = derniers[cle(l.nom)]
-      const cardio = estCardio(l.nom, l)
+      const cardio = estCardio(l.nom)
+      const temps = estTemps(l)
       return {
         ...l,
         series: l.series || txt(d?.series ?? 3),
-        repetitions: cardio ? '' : l.repetitions || txt(d?.repetitions ?? 10),
+        repetitions: l.repetitions || (temps ? '' : txt(d?.repetitions ?? 10)),
+        duree_sec: l.duree_sec || (temps ? txt(d?.duree_sec ?? 30) : ''),
         charge_kg: cardio ? '' : l.charge_kg || txt(d?.charge_kg),
-        duree_sec: cardio ? l.duree_sec || txt(d?.duree_sec ?? 30) : '',
         reglage: l.reglage || d?.reglage || '',
       }
     })
@@ -371,8 +399,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   useEffect(() => {
     if (seanceId || brouillon || !clientId) return
-    const contenu =
-      diffMuscu || diffCardio || fatigue || sommeil || notes.trim() || lignes.some(l => l.nom.trim())
+    const contenu = diffMuscu || diffCardio || fatigue || sommeil || notes.trim() || lignes.some(l => l.nom.trim())
     if (!contenu) return
     const minuteur = setTimeout(
       () =>
@@ -403,11 +430,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setNotes(brouillon.notes)
     setLignes(
       brouillon.lignes.length
-        ? brouillon.lignes.map(l => ({
-            ...vide(),
-            ...l,
-            duree_sec: l.duree_sec ?? (l.duree_min ? String(Number(l.duree_min) * 60) : ''),
-          }))
+        ? brouillon.lignes.map(l => {
+            // Les brouillons plus anciens n'ont pas de mode : on le déduit des valeurs saisies
+            const ancien = l as typeof l & { mode?: Mode }
+            const reps = l.repetitions.trim()
+            const duree = (l.duree_sec ?? '').trim()
+            return {
+              ...vide(),
+              ...l,
+              mode: ancien.mode ?? (!reps && duree ? 'temps' : 'reps'),
+              duree_sec: l.duree_sec ?? (l.duree_min ? String(Number(l.duree_min) * 60) : ''),
+            }
+          })
         : [vide()],
     )
     setBrouillon(null)
@@ -463,43 +497,65 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     })
   }
 
-  function copierDerniere(i: number) {
-    const d = derniers[cle(lignes[i].nom)]
-    if (!d) return
+  // Bascule un exercice entre répétitions et temps, sans effacer ce qui a été saisi dans l'autre mode
+  function changerMode(i: number, cible: Mode) {
     setLignes(l =>
-      l.map((x, j) =>
-        j === i
-          ? {
-              ...x,
-              series: txt(d.series),
-              repetitions: txt(d.repetitions),
-              charge_kg: txt(d.charge_kg),
-              duree_sec: txt(d.duree_sec),
-              distance_km: txt(d.distance_km),
-              reglage: x.reglage.trim() || d.reglage || '',
-            }
-          : x,
+      l.map((x, j) => {
+        if (j !== i || x.mode === cible) return x
+        const d = derniers[cle(x.nom)]
+        return {
+          ...x,
+          mode: cible,
+          duree_sec: cible === 'temps' && !x.duree_sec.trim() ? txt(d?.duree_sec ?? 30) : x.duree_sec,
+          repetitions: cible === 'reps' && !x.repetitions.trim() ? txt(d?.repetitions ?? 10) : x.repetitions,
+        }
+      }),
+    )
+  }
+
+  function copierDerniere(i: number) {
+    const x = lignes[i]
+    const d = derniers[cle(x.nom)]
+    if (!d) return
+    const temps = estTemps(x)
+    const cardio = estCardio(x.nom)
+    setLignes(l =>
+      l.map((y, j) =>
+        j !== i
+          ? y
+          : {
+              ...y,
+              series: txt(d.series) || y.series,
+              repetitions: temps ? y.repetitions : txt(d.repetitions) || y.repetitions,
+              duree_sec: temps ? txt(d.duree_sec) || y.duree_sec : y.duree_sec,
+              charge_kg: cardio ? y.charge_kg : txt(d.charge_kg),
+              distance_km: cardio ? txt(d.distance_km) || y.distance_km : y.distance_km,
+              reglage: y.reglage.trim() || d.reglage || '',
+            },
       ),
     )
   }
 
   function progresser(i: number) {
-    const cardio = estCardio(lignes[i].nom, lignes[i])
-    const d = derniers[cle(lignes[i].nom)]
-    const p = d && proposition(d, cardio)
-    if (!d || !p) return
+    const x = lignes[i]
+    const d = derniers[cle(x.nom)]
+    if (!d) return
+    const temps = estTemps(x)
+    const cardio = estCardio(x.nom)
+    const p = proposition(d, temps)
+    if (!p) return
     setLignes(l =>
-      l.map((x, j) =>
-        j === i
-          ? {
-              ...x,
-              series: txt(p.series),
-              repetitions: cardio ? '' : txt(p.repetitions),
-              charge_kg: cardio ? '' : txt(p.charge_kg),
-              duree_sec: cardio ? txt(p.duree_sec) : '',
-              reglage: x.reglage.trim() || d.reglage || '',
-            }
-          : x,
+      l.map((y, j) =>
+        j !== i
+          ? y
+          : {
+              ...y,
+              series: p.series != null ? txt(p.series) : y.series,
+              repetitions: temps || p.repetitions == null ? y.repetitions : txt(p.repetitions),
+              duree_sec: temps && p.duree_sec != null ? txt(p.duree_sec) : y.duree_sec,
+              charge_kg: cardio ? y.charge_kg : txt(p.charge_kg),
+              reglage: y.reglage.trim() || d.reglage || '',
+            },
       ),
     )
   }
@@ -521,10 +577,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   const prenomDe = (id: string) => autres.find(c => c.id === id)?.prenom ?? 'client'
 
-  async function creerSeancesPartagees(
-    sessionId: string,
-    exos: { ordre: number; nom: string; series: number | null; repetitions: number | null; charge_kg: number | null; duree_sec: number | null; duree_min: number | null; distance_km: number | null; reglage: string | null; lie_suivant: boolean }[],
-  ): Promise<string[]> {
+  async function creerSeancesPartagees(sessionId: string, exos: (ValeursExo & { ordre: number; nom: string })[]): Promise<string[]> {
     const echecNoms = invites.map(prenomDe)
     const { data, error } = await supabase
       .from('seances')
@@ -634,17 +687,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const n = valeurs(l).series
     return total + (n && !Number.isNaN(n) ? n : 0)
   }, 0)
-  const etiquettes = etiquettesSuperset(lignes)
+  const supersets: InfoSuperset[] = analyserSupersets(lignes)
   const partenaires = autres.filter(c => client.groupe_facturation && c.groupe_facturation === client.groupe_facturation)
   const puces = [...partenaires, ...(invites.filter(id => !partenaires.some(p => p.id === id)).map(id => autres.find(c => c.id === id)).filter(Boolean) as typeof autres)]
   const basculerInvite = (id: string) => setInvites(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
   const invalide =
     verifier(duree, REGLES.duree) ||
-    lignes.some(l =>
-      verifier(l.series, REGLES.series) ||
-      (estCardio(l.nom, l)
-        ? verifier(l.duree_sec, REGLES.duree_sec) || verifier(l.distance_km, REGLES.distance)
-        : verifier(l.repetitions, REGLES.repetitions) || verifier(l.charge_kg, REGLES.charge)),
+    lignes.some(
+      l =>
+        verifier(l.series, REGLES.series) ||
+        verifier(l.charge_kg, REGLES.charge) ||
+        verifier(l.distance_km, REGLES.distance) ||
+        (estTemps(l) ? verifier(l.duree_sec, REGLES.duree_sec) : verifier(l.repetitions, REGLES.repetitions)),
     )
 
   return (
@@ -748,20 +802,30 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         {lignes.map((l, i) => {
           const dernier = derniers[cle(l.nom)]
           const fiche = biblio[cle(l.nom)]
-          const cardio = estCardio(l.nom, l)
-          const prop = dernier ? proposition(dernier, cardio) : null
+          const cardio = estCardio(l.nom)
+          const temps = estTemps(l)
+          const prop = dernier ? proposition(dernier, temps) : null
+          const sup = supersets[i]
+          const lieAvecSuivant = l.lie_suivant && i < lignes.length - 1
+          const classes = [
+            'exercice',
+            sup.groupe !== null ? `superset-groupe grp-sup-${sup.groupe}` : '',
+            lieAvecSuivant ? 'lie-suivant' : '',
+          ].filter(Boolean).join(' ')
           const sollicitesSensibles = (fiche?.exercice_muscles ?? []).filter(m => zonesSensibles.includes(m.muscle))
           const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
 
           if (l.valide && l.nom.trim()) {
-            const resumeCompact = cardio
-              ? resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) })
-              : [
-                  l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '',
+            const resumeCompact = temps
+              ? [
+                  resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) }),
                   l.charge_kg ? `@ ${l.charge_kg} kg` : '',
                 ].filter(Boolean).join(' ')
+              : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
+                  .filter(Boolean)
+                  .join(' ')
             return (
-              <div className={`exercice compact${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`} key={i}>
+              <div className={`${classes} compact`} key={i}>
                 <div className="exercice-entete">
                   <button
                     type="button"
@@ -771,7 +835,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   >
                     ✓
                   </button>
-                  {etiquettes[i] && <span className="puce superset">{etiquettes[i]}</span>}
+                  {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
                   <button type="button" className="exercice-compact-texte" onClick={() => maj(i, 'valide', false)}>
                     <strong>{l.nom}</strong>
                     {resumeCompact && <span> — {resumeCompact}</span>}
@@ -784,7 +848,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           }
 
           return (
-            <div className={`exercice${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`} key={i}>
+            <div className={classes} key={i}>
               <div className="exercice-entete">
                 {l.nom.trim() && (
                   <button
@@ -797,7 +861,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     ✓
                   </button>
                 )}
-                {etiquettes[i] && <span className="puce superset">{etiquettes[i]}</span>}
+                {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
                 <button
                   type="button"
                   className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
@@ -818,11 +882,32 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
               {dernier && (
                 <div className="derniere-ligne">
-                  <DerniereFois d={dernier} cardio={cardio} />
+                  <DerniereFois d={dernier} temps={temps} />
                   <div className="exercice-actions">
                     <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Dernière fois</button>
                     {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
                   </div>
+                </div>
+              )}
+
+              {!cardio && (
+                <div className="bascule-mode" role="group" aria-label="Mesure de l'effort">
+                  <button
+                    type="button"
+                    className={`bascule-mode-bouton${!temps ? ' actif' : ''}`}
+                    aria-pressed={!temps}
+                    onClick={() => changerMode(i, 'reps')}
+                  >
+                    Répétitions
+                  </button>
+                  <button
+                    type="button"
+                    className={`bascule-mode-bouton${temps ? ' actif' : ''}`}
+                    aria-pressed={temps}
+                    onClick={() => changerMode(i, 'temps')}
+                  >
+                    Temps
+                  </button>
                 </div>
               )}
 
@@ -853,6 +938,36 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     depart={dernier?.distance_km ?? 1}
                     decimal
                     erreur={verifier(l.distance_km, REGLES.distance)}
+                  />
+                </div>
+              ) : temps ? (
+                <div className="compteurs">
+                  <Compteur
+                    libelle="Séries"
+                    valeur={l.series}
+                    onChange={v => maj(i, 'series', v)}
+                    pas={1}
+                    depart={dernier?.series ?? 3}
+                    erreur={verifier(l.series, REGLES.series)}
+                  />
+                  <Compteur
+                    libelle="Durée (sec)"
+                    valeur={l.duree_sec}
+                    onChange={v => maj(i, 'duree_sec', v)}
+                    pas={5}
+                    choixPas={PAS_SECONDES}
+                    depart={dernier?.duree_sec ?? 30}
+                    erreur={verifier(l.duree_sec, REGLES.duree_sec)}
+                  />
+                  <Compteur
+                    libelle="Charge (kg)"
+                    valeur={l.charge_kg}
+                    onChange={v => maj(i, 'charge_kg', v)}
+                    pas={PAS_KG}
+                    choixPas={PAS_CHARGE}
+                    depart={dernier?.charge_kg ?? PAS_KG}
+                    decimal
+                    erreur={verifier(l.charge_kg, REGLES.charge)}
                   />
                 </div>
               ) : (
@@ -886,11 +1001,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
               <div className="exercice-pied">
                 {!afficherReglage && (
-                  <button
-                    type="button"
-                    className="lien superset-lien"
-                    onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}
-                  >
+                  <button type="button" className="lien superset-lien" onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}>
                     + ⚙ Réglage
                   </button>
                 )}

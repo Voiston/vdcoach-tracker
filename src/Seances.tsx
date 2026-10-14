@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { dateFr, etiquettesSuperset, resumeCardio, resumeRessentis } from './format'
+import { analyserSupersets, dateFr, resumeCardio, resumeRessentis } from './format'
 import FenetreProgrammePdf from './ProgrammePdf'
 import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
 
@@ -93,7 +93,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
       <ul className="liste" hidden={!pret}>
         {visibles.map(s => {
           const exosTries = [...s.exercices].sort((a, b) => a.ordre - b.ordre)
-          const etiquettes = etiquettesSuperset(exosTries)
+          const supersets = analyserSupersets(exosTries)
           const infosMeta = [s.duree_min ? `${s.duree_min} min` : '', resumeRessentis(s)].filter(Boolean).join(' · ')
           return (
             <li key={s.id}>
@@ -101,10 +101,11 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
                 <strong>{dateFr(s.date_seance, true)}</strong>
                 {infosMeta && <p className="meta">{infosMeta}</p>}
                 {exosTries.map((x, idx) => {
+                  const sup = supersets[idx]
                   const cardioTxt = resumeCardio(x)
                   return (
-                    <p key={x.id}>
-                      {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                    <p key={x.id} className={sup.groupe !== null ? `ligne-sup grp-sup-${sup.groupe}` : undefined}>
+                      {sup.etiquette && <span className="puce superset-mini superset-badge">{sup.etiquette}</span>}
                       {x.nom}
                       {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
                       {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}

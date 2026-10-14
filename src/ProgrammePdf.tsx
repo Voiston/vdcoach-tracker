@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import logo from './logo-vdcoach.svg?inline'
-import { etiquettesSuperset, resumeCardio } from './format'
+import { analyserSupersets, resumeCardio } from './format'
 import { supabase } from './supabase'
 import { Champ } from './ui'
 import './impression.css'
@@ -36,7 +36,7 @@ function DocumentProgramme({
   lignes: LigneProgramme[]
   biblio: Record<string, InfoBiblio>
 }) {
-  const etiquettes = etiquettesSuperset(lignes)
+  const supersets = analyserSupersets(lignes)
 
   return (
     <div className="bp-document">
@@ -62,6 +62,7 @@ function DocumentProgramme({
           {lignes.map((l, i) => {
             const info = biblio[cle(l.nom)]
             const video = lienSur(info?.video_url)
+            const sup = supersets[i]
             const cardio = resumeCardio(l)
             const dosage = cardio
               ? cardio
@@ -70,11 +71,17 @@ function DocumentProgramme({
                   l.charge_kg ? `${l.charge_kg} kg` : '',
                 ].filter(Boolean).join(' · ')
 
+            const classes = [
+              'prog-exo',
+              sup.groupe !== null ? `superset-groupe grp-sup-${sup.groupe}` : '',
+              l.lie_suivant && i < lignes.length - 1 ? 'lie-suivant' : '',
+            ].filter(Boolean).join(' ')
+
             return (
-              <div key={i} className={`prog-exo${l.lie_suivant && i < lignes.length - 1 ? ' lie-suivant' : ''}`}>
+              <div key={i} className={classes}>
                 <div className="prog-exo-entete">
                   <div>
-                    <span className="prog-num">{etiquettes[i] ?? `#${i + 1}`}</span>
+                    <span className="prog-num">{sup.etiquette ?? `#${i + 1}`}</span>
                     <strong className="prog-nom">{l.nom}</strong>
                     {info && <small className="prog-meta">{info.groupe} · {info.materiel}</small>}
                   </div>

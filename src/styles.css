@@ -622,3 +622,87 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
   color: var(--succes);
   border: 1px solid color-mix(in srgb, var(--succes) 35%, transparent);
 }
+
+/* ==========================================================
+   Supersets : une couleur par groupe
+   ========================================================== */
+:root {
+  --sup-0: #2f7d6b; --sup-1: #b8651a; --sup-2: #7553c4;
+  --sup-3: #2a6db0; --sup-4: #b93a78; --sup-5: #8c7412;
+  --sup-on: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sup-0: #5cc4a8; --sup-1: #f0a060; --sup-2: #b39cf0;
+    --sup-3: #7fb4ea; --sup-4: #f08ab8; --sup-5: #d6c255;
+    --sup-on: #0f1614;
+  }
+}
+.grp-sup-0 { --sup: var(--sup-0); }
+.grp-sup-1 { --sup: var(--sup-1); }
+.grp-sup-2 { --sup: var(--sup-2); }
+.grp-sup-3 { --sup: var(--sup-3); }
+.grp-sup-4 { --sup: var(--sup-4); }
+.grp-sup-5 { --sup: var(--sup-5); }
+
+/* Bordure et fond teintés par groupe (les sélecteurs plus précis battent les règles de lien plus haut) */
+.exercice.superset-groupe,
+.exercice.superset-groupe.lie-suivant,
+.exercice.superset-groupe.lie-suivant + .exercice.superset-groupe {
+  border-left: 4px solid var(--sup);
+}
+.exercice.superset-groupe {
+  background: color-mix(in srgb, var(--sup) 7%, var(--surface));
+}
+.exercice.superset-groupe.lie-suivant {
+  margin-bottom: -.35rem;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+.exercice.superset-groupe.lie-suivant + .exercice.superset-groupe {
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+/* Étiquette A1, A2… de la couleur du groupe */
+.puce.superset-badge {
+  background: var(--sup, var(--accent));
+  color: var(--sup-on);
+  font-weight: 700;
+}
+
+/* Historique : ligne d'exercice rattachée à un superset */
+.ligne-sup {
+  padding-left: .55rem;
+  border-left: 3px solid var(--sup);
+}
+
+/* ==========================================================
+   Bascule Répétitions / Temps sur chaque exercice
+   ========================================================== */
+.bascule-mode {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: .2rem;
+  padding: .2rem;
+  background: var(--fond);
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+}
+.bascule-mode-bouton {
+  min-height: 2.1rem;
+  padding: .2rem .8rem;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--discret);
+  background: none;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.bascule-mode-bouton:hover {
+  background: var(--accent-doux);
+}
+.bascule-mode-bouton.actif {
+  background: var(--accent);
+  color: var(--sur-accent);
+}

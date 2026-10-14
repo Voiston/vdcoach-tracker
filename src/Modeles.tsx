@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { etiquettesSuperset, resumeCardio } from './format'
+import { analyserSupersets, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
 import Icone from './icones'
@@ -190,7 +190,7 @@ export default function Modeles() {
       <ul className="liste" hidden={!charge}>
         {visibles.map(m => {
           const exos = [...m.modele_exercices].sort((a, b) => a.ordre - b.ordre)
-          const etiquettes = etiquettesSuperset(exos)
+          const supersets = analyserSupersets(exos)
           return (
             <li key={m.id}>
               <div>
@@ -226,9 +226,10 @@ export default function Modeles() {
                 <div className="modele-liste-exos">
                   {exos.map((x, idx) => {
                     const cardioTxt = resumeCardio(x)
+                    const sup = supersets[idx]
                     return (
-                      <p key={idx} className="meta">
-                        {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                      <p key={idx} className={`meta${sup.groupe !== null ? ` ligne-sup grp-sup-${sup.groupe}` : ''}`}>
+                        {sup.etiquette && <span className="puce superset-mini superset-badge">{sup.etiquette}</span>}
                         {x.nom}
                         {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
                         {cardioTxt ? ` — ${cardioTxt}` : ''}

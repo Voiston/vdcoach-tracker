@@ -46,7 +46,7 @@ export function resumeCardio(x: {
       : x.duree_min != null
         ? `${s}${x.duree_min} min`
         : ''
-  const dist = x.distance_km != null ? `${ !temps && s ? s : '' }${x.distance_km} km` : ''
+  const dist = x.distance_km != null ? `${!temps && s ? s : ''}${x.distance_km} km` : ''
   return [temps, dist].filter(Boolean).join(' · ')
 }
 
@@ -67,12 +67,21 @@ export function resumeRessentis(s: {
   return s.ressenti != null ? `ressenti ${s.ressenti}/10` : ''
 }
 
+// Nombre de couleurs distinctes pour les supersets (classes CSS grp-sup-0 à grp-sup-5)
+export const NB_COULEURS_SUPERSET = 6
+
+export type InfoSuperset = {
+  etiquette: string | null // 'A1', 'A2', 'B1'… ou null si l'exercice est seul
+  groupe: number | null // indice de couleur (0 à NB_COULEURS_SUPERSET - 1) ou null
+}
+
 /**
- * Renvoie l'étiquette de superset/circuit ('A1', 'A2', 'B1'...) pour chaque ligne,
- * ou null si l'exercice est réalisé seul.
+ * Pour chaque ligne : étiquette de superset et indice de couleur de son groupe.
+ * Une ligne fait partie d'un superset si elle est reliée à la suivante, ou si la précédente l'est.
+ * Chaque nouveau groupe reçoit la couleur suivante, et les couleurs reprennent après la dernière.
  */
-export function etiquettesSuperset(lignes: { lie_suivant?: boolean | null }[]): (string | null)[] {
-  const res: (string | null)[] = Array(lignes.length).fill(null)
+export function analyserSupersets(lignes: { lie_suivant?: boolean | null }[]): InfoSuperset[] {
+  const res: InfoSuperset[] = lignes.map(() => ({ etiquette: null, groupe: null }))
   let groupe = 0
   let indice = 1
   for (let i = 0; i < lignes.length; i++) {
@@ -86,8 +95,13 @@ export function etiquettesSuperset(lignes: { lie_suivant?: boolean | null }[]): 
         indice++
       }
       const lettre = String.fromCharCode(64 + ((groupe - 1) % 26) + 1)
-      res[i] = `${lettre}${indice}`
+      res[i] = { etiquette: `${lettre}${indice}`, groupe: (groupe - 1) % NB_COULEURS_SUPERSET }
     }
   }
   return res
+}
+
+/** Étiquettes seules ('A1', 'A2', 'B1'…), ou null pour les exercices réalisés seuls. */
+export function etiquettesSuperset(lignes: { lie_suivant?: boolean | null }[]): (string | null)[] {
+  return analyserSupersets(lignes).map(s => s.etiquette)
 }
