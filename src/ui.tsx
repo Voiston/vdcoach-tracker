@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
 import type { Client } from './Clients'
 import Icone from './icones'
+import logo from './logo-vdcoach.svg?inline'
 
 /** Silhouettes grises animées, affichées pendant le chargement d'une liste. */
 export function Squelette({ lignes = 3 }: { lignes?: number }) {
@@ -18,10 +19,14 @@ export function Squelette({ lignes = 3 }: { lignes?: number }) {
 }
 
 /** Écran affiché pendant la vérification de la connexion au démarrage. */
+export function Logo({ alt = '' }: { alt?: string }) {
+  return <img className="logo" src={logo} alt={alt} />
+}
+
 export function EcranChargement() {
   return (
     <div className="chargement" role="status" aria-label="Chargement en cours">
-      <h1>VDCoach</h1>
+      <h1><Logo alt="VDCoach" /></h1>
       <span className="point" />
     </div>
   )
