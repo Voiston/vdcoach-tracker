@@ -45,7 +45,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
   return (
     <section>
       <h3>Informations du client</h3>
-      <form onSubmit={e => lancer(() => enregistrer(e))}>
+      <form className="formulaire-etroit" onSubmit={e => lancer(() => enregistrer(e))}>
         <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required /></Champ>
         <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
         <Champ libelle="Objectifs (facultatif)"><textarea value={objectifs} onChange={e => setObjectifs(e.target.value)} /></Champ>

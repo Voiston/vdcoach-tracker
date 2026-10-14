@@ -82,7 +82,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
           {ceMois[c.id] > 0 && <span className="meta">{ceMois[c.id]} séance{ceMois[c.id] > 1 ? 's' : ''} ce mois-ci</span>}
         </span>
       </button>
-      {c.actif && c.id !== actifId && <button type="button" className="lien action-seance" onClick={() => onNouvelleSeance(c.id)} aria-label={`Nouvelle séance pour ${c.prenom}`} title="Nouvelle séance"><span aria-hidden="true">+</span><span className="texte-action"> Séance</span></button>}
+      {c.actif && <button type="button" className="lien action-seance" onClick={() => onNouvelleSeance(c.id)} aria-label={`Nouvelle séance pour ${c.prenom}`} title="Nouvelle séance"><span aria-hidden="true">+</span><span className="texte-action"> Séance</span></button>}
     </li>
   )
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { REGLES, verifier } from './validation'
+import { verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
 import { TYPES, TESTS } from './definitions'
@@ -140,7 +140,7 @@ export default function Objectifs() {
       {formOuvert && (
         <div className="carte-section">
           <h3>Nouvel objectif</h3>
-          <form onSubmit={e => lancer(() => ajouter(e))}>
+          <form className="formulaire-etroit" onSubmit={e => lancer(() => ajouter(e))}>
             <Champ libelle="Type d'objectif"><select value={source} onChange={e => changerSource(e.target.value as Source)}>
               {(Object.keys(SOURCES) as Source[]).map(s => <option key={s} value={s}>{SOURCES[s]}</option>)}
             </select></Champ>

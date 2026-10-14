@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
 import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
+import LegendeNiveaux from './LegendeNiveaux'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -99,7 +100,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       <MessageErreur message={erreur} reessayer={charger} />
 
       {form ? (
-        <form onSubmit={e => lancer(() => enregistrer(e))}>
+        <form className="formulaire-etroit" onSubmit={e => lancer(() => enregistrer(e))}>
           <Champ libelle="Nom"><input autoComplete="off" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required /></Champ>
           <div className="ligne">
             <Champ libelle="Groupe musculaire"><select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
@@ -147,6 +148,8 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
         </select>
         <input aria-label="Rechercher un exercice" placeholder="Rechercher…" value={recherche} onChange={e => setRecherche(e.target.value)} />
       </div>
+
+      <LegendeNiveaux />
 
       {!charge && !erreur && <Squelette lignes={5} />}
       <ul className="liste" hidden={!charge}>
