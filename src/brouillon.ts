@@ -2,6 +2,14 @@
 const PREFIXE = 'vdcoach_brouillon_seance:'
 const DUREE_MAX_MS = 7 * 24 * 3600 * 1000
 
+export type RessentisParticipant = {
+  diff_muscu: string
+  diff_cardio: string
+  fatigue: string
+  sommeil: string
+  notes?: string
+}
+
 export type Brouillon = {
   clientId: string
   date: string
@@ -12,6 +20,9 @@ export type Brouillon = {
   fatigue?: string
   sommeil?: string
   notes: string
+  invites?: string[]
+  copierCharges?: boolean
+  ressentisInvites?: Record<string, RessentisParticipant>
   lignes: {
     nom: string
     series: string
@@ -20,9 +31,11 @@ export type Brouillon = {
     duree_sec?: string
     duree_min?: string
     distance_km?: string
+    repos_sec?: string
     reglage?: string
     lie_suivant?: boolean
     valide?: boolean
+    passe?: boolean
   }[]
   enregistreLe: string
 }

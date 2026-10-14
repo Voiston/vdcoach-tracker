@@ -4,8 +4,8 @@ import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { analyserSupersets, aujourdhui, courte, dateLocale, libelleRepos, resumeCardio, type InfoSuperset } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
-import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
-import { Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
+import { ecrireBrouillon, effacerBrouillon, lireBrouillon, type RessentisParticipant } from './brouillon'
+import { Avatar, Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
 import SelecteurExercice, { normaliser, zonesSensiblesSollicitees, type ExoChoix } from './SelecteurExercice'
 import Chronometre, { lancerMinuteurRepos } from './Chronometre'
 import { lireModelesFavoris } from './Modeles'
@@ -80,6 +80,15 @@ const vide = (): Ligne => ({
   valide: false,
   passe: false,
 })
+
+const ressentiVide = (): RessentisParticipant => ({
+  diff_muscu: '',
+  diff_cardio: '',
+  fatigue: '',
+  sommeil: '',
+  notes: '',
+})
+
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
 const txt = (n: number | null | undefined) => (n == null ? '' : String(n))
 const secDe = (x: { duree_sec?: number | null; duree_min?: number | null }) =>
@@ -262,6 +271,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [autres, setAutres] = useState<{ id: string; prenom: string; nom: string | null; groupe_facturation: string | null }[]>([])
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
+  const [ressentisInvites, setRessentisInvites] = useState<Record<string, RessentisParticipant>>({})
 
   // Mode Terrain Plein Écran
   const [modeTerrain, setModeTerrain] = useState(false)
@@ -270,6 +280,30 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
   const estTemps = (l: Ligne) => estCardio(l.nom) || l.mode === 'temps'
+
+  const ressentiDeInvite = (cid: string): RessentisParticipant =>
+    ressentisInvites[cid] ?? ressentiVide()
+
+  function majRessentiInvite<K extends keyof RessentisParticipant>(cid: string, champ: K, valeur: string) {
+    setRessentisInvites(prec => ({
+      ...prec,
+      [cid]: { ...(prec[cid] ?? ressentiVide()), [champ]: valeur },
+    }))
+  }
+
+  function copierRessentiPrincipalVers(cid: string) {
+    setRessentisInvites(prec => ({
+      ...prec,
+      [cid]: {
+        ...(prec[cid] ?? ressentiVide()),
+        diff_muscu: diffMuscu,
+        diff_cardio: diffCardio,
+        fatigue: fatigue,
+        sommeil: sommeil,
+      },
+    }))
+    notifier(`Notes copiées pour ${prenomDe(cid)}`)
+  }
 
   const valeurs = (l: Ligne): ValeursExo => {
     const cardio = estCardio(l.nom)
@@ -524,7 +558,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   useEffect(() => {
     if (seanceId || brouillon || !clientId) return
-    const contenu = diffMuscu || diffCardio || fatigue || sommeil || notes.trim() || lignes.some(l => l.nom.trim())
+    const aRessentisInvites = Object.values(ressentisInvites).some(
+      r => r.diff_muscu || r.diff_cardio || r.fatigue || r.sommeil || (r.notes ?? '').trim(),
+    )
+    const contenu =
+      diffMuscu ||
+      diffCardio ||
+      fatigue ||
+      sommeil ||
+      notes.trim() ||
+      invites.length > 0 ||
+      aRessentisInvites ||
+      lignes.some(l => l.nom.trim())
     if (!contenu) return
     const minuteur = setTimeout(
       () =>
@@ -537,12 +582,15 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           fatigue,
           sommeil,
           notes,
+          invites,
+          copierCharges,
+          ressentisInvites,
           lignes,
         }),
       600,
     )
     return () => clearTimeout(minuteur)
-  }, [seanceId, brouillon, clientId, date, duree, diffMuscu, diffCardio, fatigue, sommeil, notes, lignes])
+  }, [seanceId, brouillon, clientId, date, duree, diffMuscu, diffCardio, fatigue, sommeil, notes, invites, copierCharges, ressentisInvites, lignes])
 
   function reprendreBrouillon() {
     if (!brouillon) return
@@ -553,6 +601,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setFatigue(brouillon.fatigue ?? '')
     setSommeil(brouillon.sommeil ?? '')
     setNotes(brouillon.notes)
+    if (brouillon.invites) setInvites(brouillon.invites)
+    if (brouillon.copierCharges !== undefined) setCopierCharges(brouillon.copierCharges)
+    if (brouillon.ressentisInvites) setRessentisInvites(brouillon.ressentisInvites)
     setLignes(
       brouillon.lignes.length
         ? brouillon.lignes.map(l => {
@@ -624,7 +675,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         const sansVide = l.filter(x => x.nom.trim() !== '')
         const res = [...sansVide, ...nouvelles]
         if (modeTerrain) {
-          setIndexTerrain( Math.max(0, res.length - nouvelles.length))
+          setIndexTerrain(Math.max(0, res.length - nouvelles.length))
           setEcranFinTerrain(false)
         }
         return res
@@ -739,11 +790,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   /* ---------- Pilotage Mode Terrain Plein Écran ---------- */
   function trouverProchainExercice(depuis: number, etatLignes: Ligne[]): number | null {
-    // 1. Cherche le prochain exercice non validé et non passé après l'index actuel
     for (let k = depuis + 1; k < etatLignes.length; k++) {
       if (!etatLignes[k].valide && !etatLignes[k].passe) return k
     }
-    // 2. Cherche un exercice non validé (y compris ceux mis en attente plus tôt)
     const nonFait = etatLignes.findIndex((l, k) => k !== depuis && !l.valide)
     return nonFait !== -1 ? nonFait : null
   }
@@ -770,7 +819,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       setIndexTerrain(suivant)
       setEcranFinTerrain(false)
     } else {
-      // Tous les exercices sont faits : on ouvre l'écran de fin de séance
       setEcranFinTerrain(true)
     }
   }
@@ -804,7 +852,25 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const echecNoms = invites.map(prenomDe)
     const { data, error } = await supabase
       .from('seances')
-      .insert(invites.map(cid => ({ client_id: cid, date_seance: date, duree_min: num(duree), session_id: sessionId })))
+      .insert(
+        invites.map(cid => {
+          const r = ressentiDeInvite(cid)
+          const notePerso = (r.notes ?? '').trim()
+          const noteCommune = notes.trim()
+          const notesFinales = [notePerso, noteCommune].filter(Boolean).join(' — ') || null
+          return {
+            client_id: cid,
+            date_seance: date,
+            duree_min: num(duree),
+            diff_muscu: num(r.diff_muscu),
+            diff_cardio: num(r.diff_cardio),
+            fatigue: num(r.fatigue),
+            sommeil: num(r.sommeil),
+            notes: notesFinales,
+            session_id: sessionId,
+          }
+        }),
+      )
       .select('id, client_id')
     if (error || !data) return echecNoms
     const lignesExos = data.flatMap(s =>
@@ -932,6 +998,99 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         (estTemps(l) ? verifier(l.duree_sec, REGLES.duree_sec) : verifier(l.repetitions, REGLES.repetitions)),
     )
 
+  // Bloc réutilisable des 4 notes sur 10 pour 1 ou plusieurs membres sur le même écran
+  const aDesNotesPrincipal = Boolean(diffMuscu || diffCardio || fatigue || sommeil)
+  const nbNotesPrincipal = [diffMuscu, diffCardio, fatigue, sommeil].filter(Boolean).length
+
+  const blocRessentisTousMembres =
+    invites.length === 0 ? (
+      <div className="grille-ressentis">
+        <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
+        <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
+        <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
+        <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+      </div>
+    ) : (
+      <div className="ressentis-partages">
+        {/* Carte du client principal */}
+        <div className="carte-ressenti-membre">
+          <div className="entete-ressenti-membre">
+            <span className="identite-ressenti-membre">
+              <Avatar client={client} />
+              <strong>{client.prenom} {client.nom}</strong>
+            </span>
+            <span className="puce neutre">{nbNotesPrincipal}/4 noté{nbNotesPrincipal > 1 ? 's' : ''}</span>
+          </div>
+          <div className="grille-ressentis compacte">
+            <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
+            <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
+            <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
+            <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+          </div>
+        </div>
+
+        {/* Cartes de chaque membre invité sur le même écran */}
+        {invites.map(cid => {
+          const membre = autres.find(c => c.id === cid) ?? { id: cid, prenom: 'Participant', nom: null }
+          const r = ressentiDeInvite(cid)
+          const nbNotes = [r.diff_muscu, r.diff_cardio, r.fatigue, r.sommeil].filter(Boolean).length
+          return (
+            <div key={cid} className="carte-ressenti-membre">
+              <div className="entete-ressenti-membre">
+                <span className="identite-ressenti-membre">
+                  <Avatar client={membre} />
+                  <strong>{membre.prenom} {membre.nom}</strong>
+                </span>
+                <div className="ligne" style={{ gap: '.35rem' }}>
+                  {aDesNotesPrincipal && (
+                    <button
+                      type="button"
+                      className="secondaire pas-puce actif"
+                      title={`Copier les 4 notes de ${client.prenom}`}
+                      onClick={() => copierRessentiPrincipalVers(cid)}
+                    >
+                      ⎘ Idem {client.prenom}
+                    </button>
+                  )}
+                  <span className="puce neutre">{nbNotes}/4 noté{nbNotes > 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              <div className="grille-ressentis compacte">
+                <NoteSur10
+                  libelle="Difficulté musculaire"
+                  valeur={r.diff_muscu}
+                  onChange={v => majRessentiInvite(cid, 'diff_muscu', v)}
+                />
+                <NoteSur10
+                  libelle="Difficulté cardio"
+                  valeur={r.diff_cardio}
+                  onChange={v => majRessentiInvite(cid, 'diff_cardio', v)}
+                />
+                <NoteSur10
+                  libelle="Fatigue"
+                  valeur={r.fatigue}
+                  onChange={v => majRessentiInvite(cid, 'fatigue', v)}
+                />
+                <NoteSur10
+                  libelle="Qualité du sommeil"
+                  valeur={r.sommeil}
+                  onChange={v => majRessentiInvite(cid, 'sommeil', v)}
+                  inverse
+                />
+              </div>
+              <input
+                className="champ-reglage"
+                aria-label={`Note spécifique pour ${membre.prenom}`}
+                placeholder={`Note personnelle pour ${membre.prenom} (facultatif)…`}
+                value={r.notes ?? ''}
+                onChange={e => majRessentiInvite(cid, 'notes', e.target.value)}
+              />
+            </div>
+          )
+        })}
+      </div>
+    )
+
   // Données de l'exercice affiché en Mode Terrain Plein Écran
   const iTerrain = Math.min(indexTerrain, Math.max(0, lignes.length - 1))
   const lTerrain = lignes[iTerrain] ?? vide()
@@ -947,7 +1106,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         zonesSensibles,
       )
     : []
-  // Exercices partenaires du même superset (ex. A1 <-> A2)
   const partenairesSuperset =
     supTerrain?.groupe !== null && supTerrain?.groupe !== undefined
       ? lignes
@@ -956,6 +1114,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       : []
 
   const exoRemplaceNom = choix?.type === 'remplacer' ? lignes[choix.index]?.nom.trim() || null : null
+  const nomsParticipants = [client.prenom, ...invites.map(prenomDe)].join(' & ')
 
   return (
     <div className={modeTerrain ? 'terrain-plein-ecran' : undefined}>
@@ -963,7 +1122,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       {modeTerrain && (
         <div className="terrain-barre-haut">
           <div className="terrain-identite">
-            <strong>{client.prenom}</strong>
+            <strong>{nomsParticipants}</strong>
             <span className="puce">
               {nbTermines}/{saisis.length || lignes.length} fait{nbTermines > 1 ? 's' : ''}
             </span>
@@ -987,7 +1146,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         </div>
       )}
 
-      {/* Le Chronomètre reste toujours monté au même endroit : il ne se réinitialise jamais */}
+      {/* Le Chronomètre reste toujours monté au même endroit */}
       <Chronometre />
 
       <form onSubmit={enregistrer} className={modeTerrain ? 'terrain-formulaire' : undefined}>
@@ -1034,11 +1193,11 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               </button>
             </div>
 
-            {/* Contenu principal : soit l'écran de Fin & Bilan, soit la carte complète de l'exercice actif */}
+            {/* Contenu principal : soit l'écran de Fin & Bilan (avec notes de tous les membres), soit l'exercice actif */}
             {ecranFinTerrain ? (
               <div className="terrain-carte-active">
                 <div className="terrain-fin-entete">
-                  <h3>🏁 Fin de séance — {client.prenom}</h3>
+                  <h3>🏁 Fin de séance — {nomsParticipants}</h3>
                   <p className="meta">
                     {nbTermines} / {saisis.length} exercice(s) validé(s) · {nbSeries} série(s) au total
                   </p>
@@ -1067,14 +1226,58 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   </div>
                 </div>
 
-                <div className="grille-ressentis">
-                  <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
-                  <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
-                  <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
-                  <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+                {/* Possibilité d'associer un partenaire directement depuis l'écran de fin */}
+                {!seanceId && autres.length > 0 && (
+                  <div className="participants">
+                    <span className="champ-libelle">Séance partagée avec</span>
+                    {puces.length > 0 && (
+                      <div className="puces">
+                        {puces.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={`puce-choix${invites.includes(c.id) ? ' actif' : ''}`}
+                            aria-pressed={invites.includes(c.id)}
+                            onClick={() => basculerInvite(c.id)}
+                          >
+                            {invites.includes(c.id) ? '✓ ' : '+ '}{c.prenom}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <select
+                      aria-label="Ajouter un autre client à la séance"
+                      value=""
+                      onChange={e => e.target.value && setInvites(l => [...l, e.target.value])}
+                    >
+                      <option value="">Ajouter un autre client…</option>
+                      {autres
+                        .filter(c => !puces.some(p => p.id === c.id))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.prenom} {c.nom}
+                          </option>
+                        ))}
+                    </select>
+                    {invites.length > 0 && (
+                      <label className="case">
+                        <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
+                        Copier aussi les charges et réglages
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <span className="champ-libelle" style={{ display: 'block', marginBottom: '.45rem' }}>
+                    {invites.length > 0
+                      ? `Ressentis par participant (${invites.length + 1} personnes)`
+                      : 'Ressentis & forme du jour (facultatif)'}
+                  </span>
+                  {blocRessentisTousMembres}
                 </div>
 
-                <Champ libelle="Notes de séance (facultatif)">
+                <Champ libelle={invites.length > 0 ? `Notes générales ou pour ${client.prenom} (facultatif)` : 'Notes de séance (facultatif)'}>
                   <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
                 </Champ>
 
@@ -1089,7 +1292,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   .filter(Boolean)
                   .join(' ')}
               >
-                {/* Bandeau Superset pour basculer entre A1 et A2 en 1 tap */}
                 {partenairesSuperset.length > 0 && (
                   <div className="terrain-bandeau-superset">
                     <span>
@@ -1110,7 +1312,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   </div>
                 )}
 
-                {/* Titre de l'exercice + bouton Remplacer en 1 tap */}
                 <div className="terrain-exo-entete">
                   <span className="terrain-badge-position">
                     {supTerrain?.etiquette ?? `Exercice ${iTerrain + 1} / ${lignes.length}`}
@@ -1128,7 +1329,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   <span className="badge-swap-inline">⇄ {lTerrain.nom.trim() ? 'Remplacer' : 'Choisir'}</span>
                 </button>
 
-                { ficheTerrain && (ficheTerrain.groupe || ficheTerrain.materiel) && (
+                {ficheTerrain && (ficheTerrain.groupe || ficheTerrain.materiel) && (
                   <p className="meta" style={{ marginTop: '-.25rem' }}>
                     {[ficheTerrain.groupe, ficheTerrain.materiel].filter(Boolean).join(' · ')}
                   </p>
@@ -1187,7 +1388,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   </div>
                 )}
 
-                {/* Grands compteurs tactiles pour modifier facilement charges, séries et reps */}
                 {cardioTerrain ? (
                   <div className="compteurs">
                     <Compteur
@@ -1284,7 +1484,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   erreur={verifier(lTerrain.repos_sec, REGLES.duree_sec)}
                 />
 
-                {/* Mémo réglage toujours visible en Mode Terrain */}
                 <div className="champ">
                   <span className="champ-libelle">⚙ Réglage matériel / mémo client</span>
                   <input
@@ -1337,7 +1536,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     ← Retour aux exercices
                   </button>
                   <button type="submit" disabled={envoi || Boolean(invalide)} style={{ flex: 2 }}>
-                    {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : '✓ Enregistrer la séance'}
+                    {envoi
+                      ? 'Enregistrement…'
+                      : seanceId
+                        ? 'Enregistrer'
+                        : invites.length > 0
+                          ? `✓ Enregistrer pour ${invites.length + 1} clients`
+                          : '✓ Enregistrer la séance'}
                   </button>
                 </>
               ) : (
@@ -1432,7 +1637,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 </select>
                 {invites.length > 0 && (
                   <>
-                    <p className="meta">La séance sera enregistrée pour chaque participant, avec les mêmes exercices, et ne comptera que pour une séance en facturation.</p>
+                    <p className="meta">
+                      La séance sera enregistrée pour chaque participant ({nomsParticipants}). Tu pourras noter les ressentis (1 à 10) de chacun en bas de page.
+                    </p>
                     <label className="case">
                       <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
                       Copier aussi les charges et réglages (sinon à compléter dans leur profil)
@@ -1803,25 +2010,33 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               </button>
             </div>
 
-            <h3>Ressentis & forme du jour (facultatif)</h3>
-            <div className="grille-ressentis">
-              <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
-              <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
-              <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
-              <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
-            </div>
+            <h3>
+              {invites.length > 0
+                ? `Ressentis & forme du jour (${invites.length + 1} participants)`
+                : 'Ressentis & forme du jour (facultatif)'}
+            </h3>
+            {blocRessentisTousMembres}
 
-            <Champ libelle="Notes de séance (facultatif)">
+            <Champ libelle={invites.length > 0 ? `Notes communes ou pour ${client.prenom} (facultatif)` : 'Notes de séance (facultatif)'}>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} />
             </Champ>
             <MessageErreur message={erreur} />
             <div className="barre-enregistrement">
               <span className="resume">
                 {saisis.length} exercice{saisis.length > 1 ? 's' : ''}
-                <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
+                <small>
+                  {nbSeries} série{nbSeries > 1 ? 's' : ''}
+                  {invites.length > 0 ? ` · ${invites.length + 1} clients` : ''}
+                </small>
               </span>
               <button type="submit" disabled={envoi || Boolean(invalide)}>
-                {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : 'Enregistrer la séance'}
+                {envoi
+                  ? 'Enregistrement…'
+                  : seanceId
+                    ? 'Enregistrer'
+                    : invites.length > 0
+                      ? `Enregistrer (${invites.length + 1} clients)`
+                      : 'Enregistrer la séance'}
               </button>
             </div>
           </>

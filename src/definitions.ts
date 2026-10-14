@@ -66,3 +66,7 @@ export const NIVEAUX = [
   { valeur: 0.25, libelle: 'Stabilisateur' },
 ]
 export const niveauDe = (coefficient: number) => (coefficient >= 1 ? 'principal' : coefficient >= 0.5 ? 'secondaire' : 'stabilisateur')
+
+// Silhouette utilisée pour les schémas musculaires d'un client
+export type Silhouette = 'homme' | 'femme'
+export const SILHOUETTES: Record<Silhouette, string> = { homme: 'Homme', femme: 'Femme' }

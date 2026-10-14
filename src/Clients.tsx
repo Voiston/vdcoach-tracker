@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { ARTICULATIONS, MUSCLES } from './definitions'
+import { ARTICULATIONS, MUSCLES, SILHOUETTES, type Silhouette } from './definitions'
 import { Champ, MessageErreur, useNotifier, useOccupe } from './ui'
 
 export type Client = {
@@ -11,6 +11,7 @@ export type Client = {
   objectifs: string | null
   points_attention: string | null
   zones_sensibles?: string[] | null
+  silhouette?: Silhouette | null
   actif: boolean
   groupe_facturation: string | null
 }
@@ -54,12 +55,34 @@ export function SelecteurZonesSensibles({
   )
 }
 
+export function SelecteurSilhouette({ valeur, onChange }: { valeur: Silhouette; onChange: (s: Silhouette) => void }) {
+  return (
+    <fieldset>
+      <legend>Silhouette des schémas musculaires</legend>
+      <div className="puces" role="group" aria-label="Silhouette">
+        {(Object.keys(SILHOUETTES) as Silhouette[]).map(s => (
+          <button
+            key={s}
+            type="button"
+            className={`puce-choix${valeur === s ? ' actif' : ''}`}
+            aria-pressed={valeur === s}
+            onClick={() => onChange(s)}
+          >
+            {SILHOUETTES[s]}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
 export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) => void; onAnnuler: () => void }) {
   const [prenom, setPrenom] = useState('')
   const [nom, setNom] = useState('')
   const [objectifs, setObjectifs] = useState('')
   const [attention, setAttention] = useState('')
   const [zones, setZones] = useState<string[]>([])
+  const [silhouette, setSilhouette] = useState<Silhouette>('homme')
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
@@ -74,6 +97,7 @@ export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) =
         objectifs: objectifs.trim() || null,
         points_attention: attention.trim() || null,
         zones_sensibles: zones,
+        silhouette,
       })
       .select('id')
       .single()
@@ -104,6 +128,7 @@ export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) =
           </Champ>
         </div>
 
+        <SelecteurSilhouette valeur={silhouette} onChange={setSilhouette} />
         <SelecteurZonesSensibles zones={zones} onChange={setZones} />
         <MessageErreur message={erreur} />
         <div className="ligne pied-carte">

@@ -1070,3 +1070,42 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
   font-weight: 700;
   border-radius: 10px;
 }
+
+/* Cartes de ressentis multi-participants (Séance partagée) */
+.ressentis-partages {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+.carte-ressenti-membre {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  padding: .9rem 1rem;
+  background: var(--surface);
+  border: 1.5px solid var(--bord);
+  border-radius: 20px;
+}
+.terrain-carte-active .carte-ressenti-membre {
+  background: var(--fond);
+}
+.entete-ressenti-membre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding-bottom: .45rem;
+  border-bottom: 1px solid var(--trait);
+}
+.identite-ressenti-membre {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: 1rem;
+}
+.grille-ressentis.compacte {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+}

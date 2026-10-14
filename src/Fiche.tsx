@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { SelecteurZonesSensibles } from './Clients'
+import { SelecteurSilhouette, SelecteurZonesSensibles } from './Clients'
+import type { Silhouette } from './definitions'
 import GroupeFacturation from './GroupeFacturation'
 import { Champ, MessageErreur, useClientComplet, useNotifier, useOccupe } from './ui'
 
@@ -13,6 +14,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
   const [objectifs, setObjectifs] = useState(client.objectifs ?? '')
   const [attention, setAttention] = useState(client.points_attention ?? '')
   const [zones, setZones] = useState<string[]>(client.zones_sensibles ?? [])
+  const [silhouette, setSilhouette] = useState<Silhouette>(client.silhouette ?? 'homme')
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
 
@@ -26,6 +28,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
         objectifs: objectifs.trim() || null,
         points_attention: attention.trim() || null,
         zones_sensibles: zones,
+        silhouette,
       })
       .eq('id', client.id)
     if (error) return setErreur(messageErreur(error))
@@ -65,6 +68,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
             </Champ>
           </div>
 
+          <SelecteurSilhouette valeur={silhouette} onChange={setSilhouette} />
           <SelecteurZonesSensibles zones={zones} onChange={setZones} />
           <MessageErreur message={erreur} />
 
