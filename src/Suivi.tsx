@@ -191,11 +191,7 @@ export default function Suivi() {
 
       {!pret && <Squelette lignes={3} />}
       <div hidden={!pret}>
-        <div className="stats">
-          <div><strong>{seances.length}</strong><span>séances</span></div>
-          <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
-          <div><strong className="texte" title={seances.length ? courte(seances[seances.length - 1].date_seance) : undefined}>{seances.length ? ilYa(seances[seances.length - 1].date_seance, true) : '—'}</strong><span>dernière séance</span></div>
-        </div>
+        
 
         <div className="deux-colonnes">
           <div>

@@ -159,6 +159,7 @@ export default function App() {
                       rechargerQuand={`${route.page}-${versionListe}`}
                       onOuvrir={id => naviguer({ page: 'client', clientId: id, rubrique: 'apercu' })}
                       onNouvelleSeance={id => naviguer({ page: 'client', clientId: id, rubrique: 'seance' })}
+                      onVueEnsemble={large && route.page === 'client' ? () => naviguer({ page: 'clients' }) : undefined}
                     />
                   )}
                   {route.page === 'client' && (

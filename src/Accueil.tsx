@@ -4,18 +4,18 @@ import { messageErreur } from './erreurs'
 import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import { FormulaireClient, type Client } from './Clients'
 import { libelleFormat, regrouperSeances } from './facturation-lib'
+import { dateFr, ilYa, joursDepuis } from './format'
 
 type Resume = { id: string; client_id: string; date_seance: string; session_id: string | null }
+type Tri = 'prenom' | 'recent' | 'relance'
 
-const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-function ilYa(d: string) {
-  const jours = Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
-  return jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} jours`
-}
+const SEUIL_RELANCE = 21 // jours sans séance à partir desquels un client est « à relancer »
+const SANS_SEANCE = 99_999 // valeur de tri pour un client qui n'a encore aucune séance
 
-export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, rechargerQuand }: {
+export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, actifId, rechargerQuand }: {
   onOuvrir: (clientId: string) => void
   onNouvelleSeance: (clientId: string) => void
+  onVueEnsemble?: () => void
   actifId?: string
   rechargerQuand?: string
 }) {
@@ -24,6 +24,8 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
   const [recherche, setRecherche] = useState('')
+  const [tri, setTri] = useState<Tri>('prenom')
+  const [seulementRelance, setSeulementRelance] = useState(false)
   const [archives, setArchives] = useState(false)
   const [nouveau, setNouveau] = useState(false)
 
@@ -46,15 +48,29 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
 
   const derniere: Record<string, string> = {}
   for (const s of seances) derniere[s.client_id] ??= s.date_seance
+  const joursSansSeance = (id: string) => (derniere[id] ? joursDepuis(derniere[id]) : null)
+  const doitRelancer = (c: Client) => {
+    const jours = joursSansSeance(c.id)
+    return jours === null || jours >= SEUIL_RELANCE
+  }
+
   const debutMois = `${new Date().toLocaleDateString('sv-SE').slice(0, 7)}-01`
   const ceMois: Record<string, number> = {}
   for (const s of seances) if (s.date_seance >= debutMois) ceMois[s.client_id] = (ceMois[s.client_id] ?? 0) + 1
   const par = Object.fromEntries(clients.map(c => [c.id, c]))
   const recentes = [...regrouperSeances(seances)].reverse().slice(0, 5) // une séance partagée = une ligne
+
   const filtre = recherche.trim().toLowerCase()
   const correspond = (c: Client) => `${c.prenom} ${c.nom ?? ''}`.toLowerCase().includes(filtre)
-  const actifs = clients.filter(c => c.actif && correspond(c))
-  const inactifs = clients.filter(c => !c.actif && correspond(c))
+  const trier = (liste: Client[]) => {
+    const valeur = (c: Client) => joursSansSeance(c.id) ?? SANS_SEANCE
+    if (tri === 'recent') return [...liste].sort((a, b) => valeur(a) - valeur(b))
+    if (tri === 'relance') return [...liste].sort((a, b) => valeur(b) - valeur(a))
+    return liste // déjà triés par prénom
+  }
+  const actifs = trier(clients.filter(c => c.actif && correspond(c) && (!seulementRelance || doitRelancer(c))))
+  const inactifs = seulementRelance ? [] : clients.filter(c => !c.actif && correspond(c))
+  const nbARelancer = clients.filter(c => c.actif && doitRelancer(c)).length
 
   const ligne = (c: Client) => (
     <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
@@ -78,7 +94,12 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
       {nouveau ? (
         <FormulaireClient onCree={id => { setNouveau(false); onOuvrir(id) }} onAnnuler={() => setNouveau(false)} />
       ) : (
-        <button type="button" onClick={() => setNouveau(true)}>+ Nouveau client</button>
+        <div className="ligne">
+          <button type="button" onClick={() => setNouveau(true)}>+ Nouveau client</button>
+          {onVueEnsemble && (
+            <button type="button" className="secondaire" onClick={onVueEnsemble}>⌂ Vue d'ensemble</button>
+          )}
+        </div>
       )}
 
       {!pret && !erreur && <Squelette lignes={4} />}
@@ -88,13 +109,33 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, actifId, recharger
 
       {pret && clients.length > 0 && (
         <>
-          {clients.length > 6 && (
-            <input aria-label="Rechercher un client" placeholder="Rechercher un client…" value={recherche} onChange={e => setRecherche(e.target.value)} style={{ marginTop: '1rem' }} />
-          )}
-          <ul className="liste">{actifs.map(ligne)}</ul>
-          {!actifs.length && <p className="meta">Aucun client ne correspond.</p>}
+          <div className="barre-clients">
+            <input aria-label="Rechercher un client" placeholder="Rechercher un client…" value={recherche} onChange={e => setRecherche(e.target.value)} />
+            <div className="filtres-clients">
+              <button
+                type="button"
+                className={`puce-choix${seulementRelance ? ' actif' : ''}`}
+                aria-pressed={seulementRelance}
+                onClick={() => setSeulementRelance(v => !v)}
+              >
+                À relancer · {nbARelancer}
+              </button>
+              <select aria-label="Trier les clients" value={tri} onChange={e => setTri(e.target.value as Tri)}>
+                <option value="prenom">Nom (A–Z)</option>
+                <option value="recent">Vus récemment d'abord</option>
+                <option value="relance">Vus il y a longtemps d'abord</option>
+              </select>
+            </div>
+          </div>
 
-          {seances.length > 0 && !filtre && !actifId && (
+          <ul className="liste">{actifs.map(ligne)}</ul>
+          {!actifs.length && (
+            <p className="meta">
+              {seulementRelance && !filtre ? 'Tous tes clients ont eu une séance récemment. 👍' : 'Aucun client ne correspond.'}
+            </p>
+          )}
+
+          {seances.length > 0 && !filtre && !actifId && !seulementRelance && (
             <div className="activite">
               <h3>Activité récente</h3>
               <ul className="liste">

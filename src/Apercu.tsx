@@ -105,11 +105,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
       {!pret && !erreur && <Squelette lignes={3} />}
       {pret && !erreur && (
         <>
-          <div className="stats">
-            <div><strong>{total}</strong><span>séances</span></div>
-            <div><strong>{ceMois}</strong><span>ce mois-ci</span></div>
-            <div><strong className="texte" title={dernieres[0] ? courte(dernieres[0].date_seance) : undefined}>{dernieres[0] ? ilYa(dernieres[0].date_seance, true) : '—'}</strong><span>dernière séance</span></div>
-          </div>
+          
 
           <div className="colonnes-auto">
             <div className="groupe">

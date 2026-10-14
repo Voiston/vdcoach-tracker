@@ -416,3 +416,32 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
 }
 @media (min-width: 1500px) { .colonnes-auto { column-count: 3; } }
 @keyframes apparaitre { from { opacity: 0; transform: scale(.97); } }
+
+/* ==========================================================
+   À AJOUTER À LA FIN DE src/styles.css
+   Liste des clients : recherche, filtre « à relancer » et tri
+   ========================================================== */
+.barre-clients { display: flex; flex-direction: column; gap: .6rem; margin-top: .75rem; }
+.filtres-clients { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+.filtres-clients select { width: auto; min-width: 12rem; min-height: 2.45rem; padding: .3rem 2.4rem .3rem .8rem; font-size: .9rem; border-radius: 999px; }
+
+/* ==========================================================
+   À AJOUTER À LA FIN DE src/styles.css
+   Cartes de section (Fiche, Objectifs, Modèles), actions et liste de modèle
+   ========================================================== */
+
+/* Carte de regroupement : sépare visuellement les blocs d'une même page */
+.carte-section { margin-top: 1.25rem; padding: 1.1rem 1.15rem; background: var(--surface); border-radius: 20px; display: flex; flex-direction: column; gap: .6rem; }
+.carte-section h3 { margin: 0 0 .15rem; }
+.carte-section.zone-danger { background: none; border: 1.5px dashed var(--bord); }
+
+/* Ligne bouton + aide (ex. « Enregistrer les informations ») */
+.ligne-action { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .9rem; }
+
+/* En-tête de section avec un bouton d'action à droite */
+.entete-section { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+.entete-section h3 { margin: 0; }
+
+/* Exercices d'un modèle en cours de création */
+.modele-exos { margin: .25rem 0 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .25rem; font-weight: 600; }
+.modele-exos li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }

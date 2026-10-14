@@ -3,19 +3,31 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { etiquettesSuperset, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
-import { EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier } from './ui'
+import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
+import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
 
 type ModeleExo = LigneProgramme & { ordre: number }
 type Modele = { id: string; nom: string; duree_min: number | null; modele_exercices: ModeleExo[] }
 
+const cle = (n: string) => n.trim().toLowerCase()
+
 export default function Modeles() {
   const [modeles, setModeles] = useState<Modele[]>([])
+  const [biblio, setBiblio] = useState<ExoChoix[]>([])
   const [erreur, setErreur] = useState('')
   const [charge, setCharge] = useState(false)
   const notifier = useNotifier()
+  const [occupe, lancer] = useOccupe()
   const [enRenommage, setEnRenommage] = useState<Modele | null>(null)
   const [modelePdf, setModelePdf] = useState<Modele | null>(null)
   const [masques, setMasques] = useState<string[]>([])
+
+  // Création d'un modèle
+  const [creation, setCreation] = useState(false)
+  const [nomNouveau, setNomNouveau] = useState('')
+  const [nomsChoisis, setNomsChoisis] = useState<string[]>([])
+  const [selecteurOuvert, setSelecteurOuvert] = useState(false)
+  const [erreurCreation, setErreurCreation] = useState('')
 
   async function charger() {
     const { data, error } = await supabase
@@ -27,9 +39,82 @@ export default function Modeles() {
     else setModeles(data as unknown as Modele[])
   }
 
+  async function chargerBibliotheque() {
+    const { data } = await supabase
+      .from('bibliotheque_exercices')
+      .select('nom, groupe, materiel, exercice_muscles(muscle, coefficient)')
+      .order('nom')
+    setBiblio(
+      (data ?? []).map(x => ({
+        nom: x.nom as string,
+        groupe: x.groupe as string,
+        materiel: x.materiel as string,
+        muscles: (x.exercice_muscles ?? []) as { muscle: string; coefficient: number }[],
+      })),
+    )
+  }
+
   useEffect(() => {
     charger()
+    chargerBibliotheque()
   }, [])
+
+  const estCardio = (nom: string) => biblio.find(b => cle(b.nom) === cle(nom))?.groupe === 'Cardio'
+
+  function ouvrirCreation() {
+    setCreation(true)
+    setNomNouveau('')
+    setNomsChoisis([])
+    setErreurCreation('')
+  }
+
+  function fermerCreation() {
+    setCreation(false)
+    setErreurCreation('')
+  }
+
+  function ajouterNoms(noms: string[]) {
+    setNomsChoisis(l => [...l, ...noms.filter(n => !l.includes(n))])
+    setSelecteurOuvert(false)
+  }
+
+  function retirerNom(i: number) {
+    setNomsChoisis(l => l.filter((_, j) => j !== i))
+  }
+
+  async function enregistrerNouveau(e: React.FormEvent) {
+    e.preventDefault()
+    const nom = nomNouveau.trim()
+    if (!nom) return setErreurCreation('Donne un nom au modèle.')
+    if (!nomsChoisis.length) return setErreurCreation('Ajoute au moins un exercice.')
+
+    const { data, error } = await supabase.from('modeles').insert({ nom }).select('id').single()
+    if (error) return setErreurCreation(messageErreur(error))
+
+    const lignes = nomsChoisis.map((n, i) => ({
+      modele_id: data.id,
+      ordre: i,
+      nom: n,
+      series: 3,
+      repetitions: estCardio(n) ? null : 10,
+      charge_kg: null,
+      duree_sec: estCardio(n) ? 30 : null,
+      duree_min: null,
+      distance_km: null,
+      reglage: null,
+      lie_suivant: false,
+    }))
+    const { error: errExos } = await supabase.from('modele_exercices').insert(lignes)
+    if (errExos) {
+      await supabase.from('modeles').delete().eq('id', data.id)
+      return setErreurCreation(messageErreur(errExos))
+    }
+
+    setCreation(false)
+    setErreurCreation('')
+    charger()
+    notifier(`Modèle « ${nom} » créé`)
+  }
 
   async function enregistrerNom(m: Modele, nom: string): Promise<string | undefined> {
     const { error } = await supabase.from('modeles').update({ nom }).eq('id', m.id)
@@ -52,10 +137,52 @@ export default function Modeles() {
 
   return (
     <section>
-      <h3>Modèles de séance</h3>
+      <div className="entete-section">
+        <h3>Modèles de séance</h3>
+        {!creation && <button type="button" onClick={ouvrirCreation}>+ Nouveau modèle</button>}
+      </div>
+
+      {creation && (
+        <div className="carte-section">
+          <h3>Nouveau modèle</h3>
+          <form onSubmit={e => lancer(() => enregistrerNouveau(e))}>
+            <Champ libelle="Nom du modèle">
+              <input autoFocus placeholder="Ex. Full body A" value={nomNouveau} onChange={e => setNomNouveau(e.target.value)} />
+            </Champ>
+            <div className="champ">
+              <span className="champ-libelle">Exercices ({nomsChoisis.length})</span>
+              {nomsChoisis.length > 0 && (
+                <ol className="modele-exos">
+                  {nomsChoisis.map((n, i) => (
+                    <li key={`${n}-${i}`}>
+                      <span>{n}</span>
+                      <button type="button" className="lien danger outil" aria-label={`Retirer ${n}`} onClick={() => retirerNom(i)}>✕</button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <button type="button" className="secondaire" onClick={() => setSelecteurOuvert(true)}>+ Ajouter des exercices</button>
+            </div>
+            <p className="meta">Par défaut : 3 séries de 10 répétitions (30 s pour le cardio). Tu ajusteras les charges pendant la séance.</p>
+            <MessageErreur message={erreurCreation} />
+            <div className="ligne">
+              <button type="submit" disabled={occupe}>{occupe ? 'Création…' : 'Créer le modèle'}</button>
+              <button type="button" className="secondaire" onClick={fermerCreation}>Annuler</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <MessageErreur message={erreur} reessayer={charger} />
-      {charge && !visibles.length && !erreur && <EtatVide titre="Aucun modèle" texte="Dans l'onglet Séance, saisis tes exercices puis touche « Créer un modèle »." />}
       {!charge && !erreur && <Squelette lignes={2} />}
+      {charge && !visibles.length && !erreur && !creation && (
+        <EtatVide
+          titre="Aucun modèle"
+          texte="Un modèle regroupe les exercices d'une séance type pour la retrouver en un clic."
+          action={{ libelle: '+ Nouveau modèle', onClick: ouvrirCreation }}
+        />
+      )}
+
       <ul className="liste" hidden={!charge}>
         {visibles.map(m => {
           const exos = [...m.modele_exercices].sort((a, b) => a.ordre - b.ordre)
@@ -90,6 +217,7 @@ export default function Modeles() {
           )
         })}
       </ul>
+
       {enRenommage && (
         <FeuilleSaisie
           titre="Renommer le modèle"
@@ -109,6 +237,16 @@ export default function Modeles() {
           titreInitial={modelePdf.nom}
           lignes={[...modelePdf.modele_exercices].sort((a, b) => a.ordre - b.ordre)}
           onFermer={() => setModelePdf(null)}
+        />
+      )}
+      {selecteurOuvert && (
+        <SelecteurExercice
+          exercices={biblio}
+          faits={new Set<string>()}
+          multiple
+          onChoisir={n => ajouterNoms([n])}
+          onChoisirMultiple={ajouterNoms}
+          onFermer={() => setSelecteurOuvert(false)}
         />
       )}
     </section>

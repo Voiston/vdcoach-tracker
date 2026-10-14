@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { Champ, ErreurChargement, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useAller, useClient, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
 import { TYPES, TESTS } from './definitions'
 import JaugeObjectif from './JaugeObjectif'
 import { chargerObjectifs, libelle, unite, valeurActuelle, type Objectif, type Source } from './objectifs-lib'
@@ -17,6 +17,7 @@ export default function Objectifs() {
   const [derniereMesure, setDerniereMesure] = useState<Record<string, number>>({}) // type → dernière valeur
   const [meilleureCharge, setMeilleureCharge] = useState<Record<string, number>>({}) // exercice (minuscules) → charge max
   const [noms, setNoms] = useState<string[]>([])
+  const [formOuvert, setFormOuvert] = useState(false)
   const [source, setSource] = useState<Source>('mesure')
   const [ref, setRef] = useState('poids')
   const [depart, setDepart] = useState('')
@@ -25,7 +26,6 @@ export default function Objectifs() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
-  const aller = useAller()
   const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
@@ -63,6 +63,18 @@ export default function Objectifs() {
     viser(s, s === 'charge' ? '' : Object.keys(s === 'mesure' ? TYPES : TESTS)[0])
   }
 
+  function ouvrirFormulaire() {
+    setErreur('')
+    setFormOuvert(true)
+  }
+
+  function fermerFormulaire() {
+    setCible('')
+    setEcheance('')
+    setErreur('')
+    setFormOuvert(false)
+  }
+
   async function ajouter(e: React.FormEvent) {
     e.preventDefault()
     const dep = nombre(depart)
@@ -76,6 +88,7 @@ export default function Objectifs() {
     setCible('')
     setEcheance('')
     setErreur('')
+    setFormOuvert(false)
     charger()
     notifier('Objectif ajouté')
   }
@@ -109,31 +122,51 @@ export default function Objectifs() {
           </li>
         ))}
       </ul>
-      {pret && !visibles.length && <EtatVide titre="Aucun objectif" texte="Fixe une cible chiffrée (poids, charge, test physique) et suis la progression ici." />}
 
-      <h3>Nouvel objectif</h3>
-      <form onSubmit={e => lancer(() => ajouter(e))}>
-        <Champ libelle="Type d'objectif"><select value={source} onChange={e => changerSource(e.target.value as Source)}>
-          {(Object.keys(SOURCES) as Source[]).map(s => <option key={s} value={s}>{SOURCES[s]}</option>)}
-        </select></Champ>
-        {source === 'charge' ? (
-          <>
-            <Champ libelle="Exercice"><input list="noms-objectifs" value={ref} onChange={e => viser('charge', e.target.value)} /></Champ>
-            <datalist id="noms-objectifs">{noms.map(n => <option key={n} value={n} />)}</datalist>
-          </>
-        ) : (
-          <Champ libelle="Suivi concerné"><select value={ref} onChange={e => viser(source, e.target.value)}>
-            {Object.entries(source === 'mesure' ? TYPES : TESTS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-          </select></Champ>
-        )}
-        <div className="ligne">
-          <Champ libelle={`Départ (${unite(source, ref)})`} erreur={verifier(depart)}><input inputMode="decimal" value={depart} onChange={e => setDepart(e.target.value)} /></Champ>
-          <Champ libelle={`Cible (${unite(source, ref)})`} erreur={verifier(cible)}><input inputMode="decimal" value={cible} onChange={e => setCible(e.target.value)} /></Champ>
+      {pret && !visibles.length && !formOuvert && (
+        <EtatVide
+          titre="Aucun objectif"
+          texte="Fixe une cible chiffrée (poids, charge, test physique) et suis la progression ici."
+          action={{ libelle: '+ Nouvel objectif', onClick: ouvrirFormulaire }}
+        />
+      )}
+
+      {pret && visibles.length > 0 && !formOuvert && (
+        <div className="entete-section">
+          <button type="button" className="secondaire" onClick={ouvrirFormulaire}>+ Nouvel objectif</button>
         </div>
-        <Champ libelle="Échéance (facultatif)"><input type="date" value={echeance} onChange={e => setEcheance(e.target.value)} /></Champ>
-        <p className="meta">Le départ est proposé d'après les données du client ; l'échéance est facultative.</p>
-        <button type="submit" disabled={occupe || Boolean(verifier(depart) || verifier(cible))}>{occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}</button>
-      </form>
+      )}
+
+      {formOuvert && (
+        <div className="carte-section">
+          <h3>Nouvel objectif</h3>
+          <form onSubmit={e => lancer(() => ajouter(e))}>
+            <Champ libelle="Type d'objectif"><select value={source} onChange={e => changerSource(e.target.value as Source)}>
+              {(Object.keys(SOURCES) as Source[]).map(s => <option key={s} value={s}>{SOURCES[s]}</option>)}
+            </select></Champ>
+            {source === 'charge' ? (
+              <>
+                <Champ libelle="Exercice"><input list="noms-objectifs" value={ref} onChange={e => viser('charge', e.target.value)} /></Champ>
+                <datalist id="noms-objectifs">{noms.map(n => <option key={n} value={n} />)}</datalist>
+              </>
+            ) : (
+              <Champ libelle="Suivi concerné"><select value={ref} onChange={e => viser(source, e.target.value)}>
+                {Object.entries(source === 'mesure' ? TYPES : TESTS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+              </select></Champ>
+            )}
+            <div className="ligne">
+              <Champ libelle={`Départ (${unite(source, ref)})`} erreur={verifier(depart)}><input inputMode="decimal" value={depart} onChange={e => setDepart(e.target.value)} /></Champ>
+              <Champ libelle={`Cible (${unite(source, ref)})`} erreur={verifier(cible)}><input inputMode="decimal" value={cible} onChange={e => setCible(e.target.value)} /></Champ>
+            </div>
+            <Champ libelle="Échéance (facultatif)"><input type="date" value={echeance} onChange={e => setEcheance(e.target.value)} /></Champ>
+            <p className="meta">Le départ est proposé d'après les données du client ; l'échéance est facultative.</p>
+            <div className="ligne">
+              <button type="submit" disabled={occupe || Boolean(verifier(depart) || verifier(cible))}>{occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}</button>
+              <button type="button" className="secondaire" onClick={fermerFormulaire}>Annuler</button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   )
 }

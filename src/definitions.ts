@@ -42,6 +42,23 @@ export const MUSCLES: Record<string, string> = {
   obliques: 'Obliques',
 }
 
+// Articulations et rachis : zones à ménager, les plus fréquentes en coaching sportif.
+// Elles ne sont pas reliées aux exercices : elles apparaissent en rappel sur le profil du client.
+export const ARTICULATIONS: Record<string, string> = {
+  genou: 'Genou',
+  hanche: 'Hanche',
+  cheville: 'Cheville',
+  pied: 'Pied',
+  epaule: 'Épaule',
+  coude: 'Coude',
+  poignet: 'Poignet',
+  rachis_cervical: 'Rachis cervical',
+  rachis_lombaire: 'Rachis lombaire',
+}
+
+// Libellé d'une zone sensible, qu'il s'agisse d'un muscle ou d'une articulation
+export const libelleZone = (cle: string) => MUSCLES[cle] ?? ARTICULATIONS[cle] ?? cle
+
 // Niveau de sollicitation = poids d'une série pour ce muscle dans le calcul du volume.
 export const NIVEAUX = [
   { valeur: 1, libelle: 'Principal' },

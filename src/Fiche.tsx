@@ -31,7 +31,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
     if (error) return setErreur(messageErreur(error))
     setErreur('')
     await recharger()
-    notifier('Fiche enregistrée')
+    notifier('Informations enregistrées')
   }
 
   async function basculerActif() {
@@ -44,6 +44,7 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
 
   return (
     <section>
+      <h3>Informations du client</h3>
       <form onSubmit={e => lancer(() => enregistrer(e))}>
         <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required /></Champ>
         <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
@@ -53,12 +54,28 @@ export default function Fiche({ onRetour }: { onRetour: () => void }) {
         </Champ>
         <SelecteurZonesSensibles zones={zones} onChange={setZones} />
         <MessageErreur message={erreur} />
-        <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer la fiche'}</button>
+        <div className="ligne-action">
+          <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : 'Enregistrer les informations'}</button>
+          <span className="meta">Enregistre les champs de cette section uniquement.</span>
+        </div>
       </form>
-      <GroupeFacturation />
-      <h3>Archivage</h3>
-      <p className="meta">Un client archivé disparaît de la liste principale, mais ses séances sont conservées.</p>
-      <button type="button" className="secondaire" onClick={basculerActif}>{client.actif ? 'Archiver ce client' : 'Réactiver ce client'}</button>
+
+      <div className="carte-section">
+        <GroupeFacturation />
+        <p className="meta">
+          Les associations de facturation s'enregistrent dès que tu les valides, sans passer par le bouton ci-dessus.
+        </p>
+      </div>
+
+      <div className="carte-section zone-danger">
+        <h3>Archivage</h3>
+        <p className="meta">Un client archivé disparaît de la liste principale, mais ses séances sont conservées.</p>
+        <div>
+          <button type="button" className="secondaire" onClick={basculerActif}>
+            {client.actif ? 'Archiver ce client' : 'Réactiver ce client'}
+          </button>
+        </div>
+      </div>
     </section>
   )
 }

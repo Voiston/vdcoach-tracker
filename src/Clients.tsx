@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { MUSCLES } from './definitions'
+import { ARTICULATIONS, MUSCLES } from './definitions'
 import { Champ, MessageErreur, useNotifier, useOccupe } from './ui'
 
 export type Client = {
@@ -22,31 +22,34 @@ export function SelecteurZonesSensibles({
   zones: string[]
   onChange: (zones: string[]) => void
 }) {
-  const basculer = (m: string) =>
-    onChange(zones.includes(m) ? zones.filter(x => x !== m) : [...zones, m])
+  const basculer = (cle: string) =>
+    onChange(zones.includes(cle) ? zones.filter(x => x !== cle) : [...zones, cle])
+
+  const puce = ([cle, libelle]: [string, string]) => {
+    const actif = zones.includes(cle)
+    return (
+      <button
+        key={cle}
+        type="button"
+        className={`puce-choix${actif ? ' alerte' : ''}`}
+        aria-pressed={actif}
+        onClick={() => basculer(cle)}
+      >
+        {actif ? '⚠ ' : '+ '}{libelle}
+      </button>
+    )
+  }
 
   return (
     <fieldset>
-      <legend>Zones sensibles / articulations à ménager (facultatif)</legend>
+      <legend>Zones sensibles / à ménager (facultatif)</legend>
       <p className="champ-aide">
-        Un badge d’alerte s’affichera lors du choix d’un exercice sollicitant l’une de ces zones.
+        Les articulations et le rachis apparaissent en rappel sur le profil. Les muscles déclenchent aussi une alerte lors du choix d’un exercice qui les sollicite.
       </p>
-      <div className="puces">
-        {Object.entries(MUSCLES).map(([cle, libelle]) => {
-          const actif = zones.includes(cle)
-          return (
-            <button
-              key={cle}
-              type="button"
-              className={`puce-choix${actif ? ' alerte' : ''}`}
-              aria-pressed={actif}
-              onClick={() => basculer(cle)}
-            >
-              {actif ? '⚠ ' : '+ '}{libelle}
-            </button>
-          )
-        })}
-      </div>
+      <span className="champ-libelle">Articulations et rachis</span>
+      <div className="puces">{Object.entries(ARTICULATIONS).map(puce)}</div>
+      <span className="champ-libelle">Muscles</span>
+      <div className="puces">{Object.entries(MUSCLES).map(puce)}</div>
     </fieldset>
   )
 }

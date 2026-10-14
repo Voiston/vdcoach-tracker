@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
-import { MUSCLES } from './definitions'
+import { libelleZone } from './definitions'
 import { messageErreur } from './erreurs'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { Avatar, ClientCtx, ErreurChargement, Squelette } from './ui'
 import Apercu from './Apercu'
 import Seances from './Seances'
-import SuiviHub from './SuiviHub'
+import Suivi from './Suivi'
+import Muscles from './Muscles'
+import Objectifs from './Objectifs'
+import Bilans from './Bilans'
 import Fiche from './Fiche'
 import NouvelleSeance from './NouvelleSeance'
 
@@ -34,6 +37,7 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   const [client, setClient] = useState<Client | null>(null)
   const [erreur, setErreur] = useState('')
   const [resume, setResume] = useState<{ n: number; avec: string[]; mois: string } | null>(null)
+  const [total, setTotal] = useState<number | null>(null)
 
   async function recharger() {
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).single()
@@ -46,15 +50,25 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
     recharger()
   }, [clientId])
 
+  // Séances du mois et total, recalculés quand on change de rubrique (par exemple après un enregistrement).
+  // Une séance partagée existe en plusieurs lignes : on compte une seule fois chaque session.
   useEffect(() => {
-    if (client) resumeMois(client).then(setResume)
+    if (!client) return
+    resumeMois(client).then(setResume)
+    supabase
+      .from('seances')
+      .select('id, session_id')
+      .eq('client_id', client.id)
+      .then(({ data }) => {
+        if (data) setTotal(new Set(data.map(s => s.session_id ?? s.id)).size)
+      })
   }, [client?.id, client?.groupe_facturation, rubrique])
 
   if (erreur && !client) return <ErreurChargement message={erreur} />
   if (!client) return <Squelette lignes={3} />
 
   const saisie = rubrique === 'seance'
-  const zones = (client.zones_sensibles ?? []).map(z => MUSCLES[z] ?? z)
+  const zones = (client.zones_sensibles ?? []).map(libelleZone)
 
   return (
     <ClientCtx.Provider value={{ client, recharger }}>
@@ -83,6 +97,7 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
               {resume && (
                 <p className="meta">
                   {resume.n} séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
+                  {total !== null && total > 0 && ` · ${total} au total`}
                   {resume.avec.length > 0 && ` · facturées avec ${resume.avec.join(' & ')}`}
                 </p>
               )}
@@ -128,8 +143,20 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
             </div>
             {rubrique === 'apercu' && <Apercu onRubrique={onRubrique} />}
             {rubrique === 'seances' && <Seances onEdit={id => onRubrique('seance', id)} onNouvelle={() => onRubrique('seance')} />}
-            {rubrique === 'suivi' && <SuiviHub key="suivi" vues={['progression', 'muscles']} />}
-            {rubrique === 'objectifs' && <SuiviHub key="objectifs" vues={['objectifs', 'bilans']} />}
+            {rubrique === 'suivi' && (
+              <>
+                <Suivi />
+                <h3>Muscles travaillés</h3>
+                <Muscles />
+              </>
+            )}
+            {rubrique === 'objectifs' && (
+              <>
+                <Objectifs />
+                <h3>Bilans physiques</h3>
+                <Bilans />
+              </>
+            )}
             {rubrique === 'fiche' && <Fiche onRetour={onRetour} />}
           </>
         )}
