@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { MUSCLES } from './definitions'
-import { analyserSupersets, aujourdhui, courte, dateLocale, resumeCardio, type InfoSuperset } from './format'
+import { analyserSupersets, aujourdhui, courte, dateLocale, libelleRepos, resumeCardio, type InfoSuperset } from './format'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon } from './brouillon'
 import { Champ, Compteur, FeuilleSaisie, MessageErreur, NoteSur10, useClient, useNotifier } from './ui'
@@ -21,6 +21,7 @@ type Ligne = {
   charge_kg: string
   duree_sec: string
   distance_km: string
+  repos_sec: string
   reglage: string
   lie_suivant: boolean
   valide: boolean
@@ -35,6 +36,7 @@ type Exo = {
   duree_sec?: number | null
   duree_min?: number | null
   distance_km: number | null
+  repos_sec?: number | null
   reglage?: string | null
   lie_suivant?: boolean | null
 }
@@ -47,11 +49,13 @@ type ValeursExo = {
   duree_sec: number | null
   duree_min: number | null
   distance_km: number | null
+  repos_sec: number | null
   reglage: string | null
   lie_suivant: boolean
 }
 
 const DUREES_RAPIDES = ['30', '45', '60', '75', '90']
+const REPOS_RAPIDES = [30, 60, 90, 120, 180]
 const PAS_CHARGE = [1, 2.5, 5, 10]
 const PAS_SECONDES = [5, 10, 15, 30, 60]
 
@@ -63,6 +67,7 @@ const vide = (): Ligne => ({
   charge_kg: '',
   duree_sec: '',
   distance_km: '',
+  repos_sec: '',
   reglage: '',
   lie_suivant: false,
   valide: false,
@@ -85,13 +90,14 @@ const versLignes = (exos: Exo[]): Ligne[] =>
           charge_kg: txt(x.charge_kg),
           duree_sec: txt(secDe(x)),
           distance_km: txt(x.distance_km),
+          repos_sec: txt(x.repos_sec),
           reglage: x.reglage ?? '',
           lie_suivant: Boolean(x.lie_suivant),
           valide: false,
         }))
     : [vide()]
 
-const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)'
+const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)'
 
 // Règle de progression simple (double progression) : à modifier selon ta façon de coacher.
 const PLAFOND_REPS = 12
@@ -104,6 +110,7 @@ type Dernier = {
   charge_kg: number | null
   duree_sec: number | null
   distance_km: number | null
+  repos_sec: number | null
   reglage: string | null
 }
 type Proposition = {
@@ -156,6 +163,38 @@ function DerniereFois({ d, temps }: { d: Dernier; temps: boolean }) {
       {conseil ? ` · ${conseil}` : ''}
       {reglage}
     </p>
+  )
+}
+
+// Temps de repos entre les séries : boutons rapides + saisie libre en secondes
+function ChampRepos({ valeur, onChange, erreur }: { valeur: string; onChange: (v: string) => void; erreur?: string }) {
+  const actuel = num(valeur)
+  return (
+    <div className="champ">
+      <span className="champ-libelle">Repos entre les séries</span>
+      <div className="durees-rapides">
+        {REPOS_RAPIDES.map(s => (
+          <button
+            key={s}
+            type="button"
+            className={`puce-choix${actuel === s ? ' actif' : ''}`}
+            aria-pressed={actuel === s}
+            onClick={() => onChange(actuel === s ? '' : String(s))}
+          >
+            {libelleRepos(s)}
+          </button>
+        ))}
+        <input
+          className="duree-input"
+          inputMode="numeric"
+          placeholder="sec"
+          aria-label="Repos personnalisé en secondes"
+          value={valeur}
+          onChange={e => onChange(e.target.value)}
+        />
+      </div>
+      {erreur && <span className="champ-erreur" role="alert">{erreur}</span>}
+    </div>
   )
 }
 
@@ -217,6 +256,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       duree_sec: temps ? num(l.duree_sec) : null,
       duree_min: null,
       distance_km: cardio ? num(l.distance_km) : null,
+      repos_sec: num(l.repos_sec),
       reglage: l.reglage.trim() || null,
       lie_suivant: l.lie_suivant,
     }
@@ -234,6 +274,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       charge_kg: cardio ? '' : txt(d?.charge_kg),
       duree_sec: txt(d?.duree_sec ?? 30),
       distance_km: cardio ? txt(d?.distance_km) : '',
+      repos_sec: txt(d?.repos_sec),
       reglage: d?.reglage ?? '',
       lie_suivant: false,
       valide: false,
@@ -281,7 +322,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!id) return
     const { data, error } = await supabase
       .from('modeles')
-      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
+      .select('duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)')
       .eq('id', id)
       .single()
     if (error || !data) return setErreur(error ? messageErreur(error) : 'Modèle introuvable.')
@@ -295,6 +336,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         repetitions: l.repetitions || (temps ? '' : txt(d?.repetitions ?? 10)),
         duree_sec: l.duree_sec || (temps ? txt(d?.duree_sec ?? 30) : ''),
         charge_kg: cardio ? '' : l.charge_kg || txt(d?.charge_kg),
+        repos_sec: l.repos_sec || txt(d?.repos_sec),
         reglage: l.reglage || d?.reglage || '',
       }
     })
@@ -358,6 +400,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 charge_kg: x.charge_kg,
                 duree_sec: secDe(x),
                 distance_km: x.distance_km,
+                repos_sec: x.repos_sec ?? null,
                 reglage: x.reglage ?? null,
               }
             } else if (!m[k].reglage && x.reglage) {
@@ -530,6 +573,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               duree_sec: temps ? txt(d.duree_sec) || y.duree_sec : y.duree_sec,
               charge_kg: cardio ? y.charge_kg : txt(d.charge_kg),
               distance_km: cardio ? txt(d.distance_km) || y.distance_km : y.distance_km,
+              repos_sec: txt(d.repos_sec) || y.repos_sec,
               reglage: y.reglage.trim() || d.reglage || '',
             },
       ),
@@ -595,6 +639,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         duree_sec: x.duree_sec,
         duree_min: x.duree_min,
         distance_km: x.distance_km,
+        repos_sec: x.repos_sec,
         reglage: copierCharges ? x.reglage : null,
         lie_suivant: x.lie_suivant,
       })),
@@ -698,6 +743,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         verifier(l.series, REGLES.series) ||
         verifier(l.charge_kg, REGLES.charge) ||
         verifier(l.distance_km, REGLES.distance) ||
+        verifier(l.repos_sec, REGLES.duree_sec) ||
         (estTemps(l) ? verifier(l.duree_sec, REGLES.duree_sec) : verifier(l.repetitions, REGLES.repetitions)),
     )
 
@@ -824,6 +870,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
               : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
                   .filter(Boolean)
                   .join(' ')
+            const reposTxt = libelleRepos(num(l.repos_sec))
             return (
               <div className={`${classes} compact`} key={i}>
                 <div className="exercice-entete">
@@ -839,6 +886,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   <button type="button" className="exercice-compact-texte" onClick={() => maj(i, 'valide', false)}>
                     <strong>{l.nom}</strong>
                     {resumeCompact && <span> — {resumeCompact}</span>}
+                    {reposTxt && <small className="meta"> · repos {reposTxt}</small>}
                     {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
                   </button>
                   <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
@@ -986,6 +1034,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                   />
                 </div>
               )}
+
+              <ChampRepos valeur={l.repos_sec} onChange={v => maj(i, 'repos_sec', v)} erreur={verifier(l.repos_sec, REGLES.duree_sec)} />
 
               {afficherReglage ? (
                 <input

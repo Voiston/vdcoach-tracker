@@ -33,6 +33,18 @@ export function ilYa(d: string, court = false): string {
 
 export const nb = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 
+/**
+ * Temps de repos lisible : 45 → « 45 s », 60 → « 1 min », 90 → « 1 min 30 ».
+ * Renvoie une chaîne vide si aucune valeur n'est renseignée.
+ */
+export function libelleRepos(sec: number | null | undefined): string {
+  if (sec == null || sec <= 0) return ''
+  if (sec < 60) return `${sec} s`
+  const minutes = Math.floor(sec / 60)
+  const reste = sec % 60
+  return reste ? `${minutes} min ${reste}` : `${minutes} min`
+}
+
 export function resumeCardio(x: {
   series?: number | null
   duree_sec?: number | null

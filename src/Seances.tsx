@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { analyserSupersets, dateFr, resumeCardio, resumeRessentis } from './format'
+import { analyserSupersets, dateFr, libelleRepos, resumeCardio, resumeRessentis } from './format'
 import FenetreProgrammePdf from './ProgrammePdf'
 import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
 
@@ -15,6 +15,7 @@ type Exercice = {
   duree_sec?: number | null
   duree_min: number | null
   distance_km: number | null
+  repos_sec?: number | null
   reglage?: string | null
   lie_suivant?: boolean | null
 }
@@ -49,7 +50,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     if (depuis === 0) setPret(false)
     const { data, error } = await supabase
       .from('seances')
-      .select('id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
+      .select('id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)')
       .eq('client_id', client.id)
       .order('date_seance', { ascending: false })
       .order('created_at', { ascending: false })
@@ -103,6 +104,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
                 {exosTries.map((x, idx) => {
                   const sup = supersets[idx]
                   const cardioTxt = resumeCardio(x)
+                  const reposTxt = libelleRepos(x.repos_sec)
                   return (
                     <p key={x.id} className={sup.groupe !== null ? `ligne-sup grp-sup-${sup.groupe}` : undefined}>
                       {sup.etiquette && <span className="puce superset-mini superset-badge">{sup.etiquette}</span>}
@@ -110,6 +112,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
                       {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
                       {x.charge_kg ? ` @ ${x.charge_kg} kg` : ''}
                       {cardioTxt ? ` — ${cardioTxt}` : ''}
+                      {reposTxt ? <span className="meta"> · repos {reposTxt}</span> : ''}
                       {x.reglage && <span className="meta"> ({x.reglage})</span>}
                     </p>
                   )

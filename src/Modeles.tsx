@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { analyserSupersets, resumeCardio } from './format'
+import { analyserSupersets, libelleRepos, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
 import Icone from './icones'
@@ -32,7 +32,7 @@ export default function Modeles() {
   async function charger() {
     const { data, error } = await supabase
       .from('modeles')
-      .select('id, nom, duree_min, modele_exercices(ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant)')
+      .select('id, nom, duree_min, modele_exercices(ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant, repos_sec)')
       .order('nom')
     setCharge(true)
     if (error) setErreur(messageErreur(error))
@@ -102,6 +102,7 @@ export default function Modeles() {
       duree_min: null,
       distance_km: null,
       reglage: null,
+      repos_sec: null,
       lie_suivant: false,
     }))
     const { error: errExos } = await supabase.from('modele_exercices').insert(lignes)
@@ -226,6 +227,7 @@ export default function Modeles() {
                 <div className="modele-liste-exos">
                   {exos.map((x, idx) => {
                     const cardioTxt = resumeCardio(x)
+                    const reposTxt = libelleRepos(x.repos_sec)
                     const sup = supersets[idx]
                     return (
                       <p key={idx} className={`meta${sup.groupe !== null ? ` ligne-sup grp-sup-${sup.groupe}` : ''}`}>
@@ -233,6 +235,7 @@ export default function Modeles() {
                         {x.nom}
                         {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
                         {cardioTxt ? ` — ${cardioTxt}` : ''}
+                        {reposTxt ? ` · repos ${reposTxt}` : ''}
                       </p>
                     )
                   })}

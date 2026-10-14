@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import logo from './logo-vdcoach.svg?inline'
-import { analyserSupersets, resumeCardio } from './format'
+import { analyserSupersets, libelleRepos, resumeCardio } from './format'
 import { supabase } from './supabase'
 import { Champ } from './ui'
 import './impression.css'
@@ -14,6 +14,7 @@ export type LigneProgramme = {
   duree_sec?: number | null
   duree_min?: number | null
   distance_km?: number | null
+  repos_sec?: number | null
   reglage?: string | null
   lie_suivant?: boolean | null
 }
@@ -63,6 +64,7 @@ function DocumentProgramme({
             const info = biblio[cle(l.nom)]
             const video = lienSur(info?.video_url)
             const sup = supersets[i]
+            const repos = libelleRepos(l.repos_sec)
             const cardio = resumeCardio(l)
             const dosage = cardio
               ? cardio
@@ -87,6 +89,7 @@ function DocumentProgramme({
                   </div>
                   {dosage && <b className="prog-dosage">{dosage}</b>}
                 </div>
+                {repos && <p className="prog-reglage"><strong>Repos :</strong> {repos}</p>}
                 {l.reglage && <p className="prog-reglage"><strong>Réglage :</strong> {l.reglage}</p>}
                 {info?.notes && <p className="prog-notes">{info.notes}</p>}
                 {video && (
@@ -169,7 +172,7 @@ export default function FenetreProgrammePdf({
             </Champ>
           </div>
           <Champ libelle="Consignes d’échauffement / récupération (facultatif)">
-            <textarea rows={2} placeholder="Ex. 5 min de mobilité articulaire avant de commencer. Repos : 1 min 30 entre les séries." value={consigne} onChange={e => setConsigne(e.target.value)} />
+            <textarea rows={2} placeholder="Ex. 5 min de mobilité articulaire avant de commencer." value={consigne} onChange={e => setConsigne(e.target.value)} />
           </Champ>
         </div>
 
