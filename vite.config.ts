@@ -21,7 +21,7 @@ export default defineConfig({
     csp,
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['apple-touch-icon.png'],
+      includeAssets: ['apple-touch-icon.png', 'favicon.svg', 'favicon-48.png'],
       manifest: {
         name: 'VDCoach Tracker',
         short_name: 'VDCoach',

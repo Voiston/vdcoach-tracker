@@ -6,7 +6,7 @@ import { MSG_SESSION, messageErreur } from './erreurs'
 import Accueil from './Accueil'
 import type { Rubrique } from './Profil'
 import Icone from './icones'
-import { BandeauReseau, Champ, EcranChargement, NavigationCtx, Squelette, useEcranLarge } from './ui'
+import { BandeauReseau, Champ, EcranChargement, Logo, NavigationCtx, Squelette, useEcranLarge } from './ui'
 import { Verification2FA } from './Auth2FA'
 
 const Profil = lazy(() => import('./Profil'))
@@ -127,7 +127,7 @@ export default function App() {
             }}
             aria-label="Retour à l'accueil VDCoach"
           >
-            VDCoach
+            <Logo />
           </button>
           <button type="button" className="recherche-rapide" onClick={() => setPalette(true)} aria-label="Recherche rapide (Ctrl + K)">
             <Icone nom="recherche" />
@@ -260,7 +260,7 @@ function Connexion({ message }: { message?: string }) {
 
   return (
     <form className="connexion" onSubmit={connecter}>
-      <h1>VDCoach Tracker</h1>
+      <h1><Logo alt="VDCoach Tracker" /></h1>
       {message && <p className="erreur">{message}</p>}
       <Champ libelle="Email"><input autoComplete="username" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></Champ>
       <Champ libelle="Mot de passe"><input autoComplete="current-password" type="password" value={mdp} onChange={e => setMdp(e.target.value)} required /></Champ>

@@ -1109,3 +1109,10 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
   background: none;
   border-radius: 0;
 }
+/* Logo */
+.logo { display: block; width: auto; max-width: 100%; height: 1.45rem; }
+.connexion .logo { height: 2.4rem; margin-bottom: .5rem; background: none; padding: 0; border-radius: 0; align-self: flex-start; }
+.chargement .logo { height: 2.6rem; }
+@media (min-width: 960px) { .logo-accueil .logo { height: 1.5rem; } }
+/* Le logo est bleu marine : on l'éclaircit en mode sombre pour qu'il reste lisible */
+@media (prefers-color-scheme: dark) { .logo { filter: brightness(0) invert(.93); } }
