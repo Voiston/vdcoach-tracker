@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { aujourdhui, courte, ilYa } from './format'
+import { aujourdhui, courte } from './format'
 import { Champ, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
 import './suivi.css'
 import { TYPES } from './definitions'
 import Courbe, { type Point } from './Courbe'
+import Icone from './icones'
 
 const MAX_REPS_1RM = 12
 
@@ -45,12 +46,11 @@ function semaineSuivante(d: string) {
 }
 
 const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
-  x.charge_kg === null || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
+  x.charge_kg === null || Number(x.charge_kg) <= 0 || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
     ? null
     : x.repetitions === 1 ? Number(x.charge_kg) : Number(x.charge_kg) * (1 + x.repetitions / 30)
 const arrondi = (n: number) => Math.round(n * 10) / 10
 
-// Durée totale d'un exercice cardio en minutes (séries × secondes / 60, ou anciennes minutes)
 function minutesCardioExo(x: { series: number | null; duree_sec?: number | null; duree_min: number | null }): number {
   const nbSeries = x.series ?? 1
   if (x.duree_sec != null) return (nbSeries * Number(x.duree_sec)) / 60
@@ -121,15 +121,16 @@ export default function Suivi() {
     })
   }
 
+  // On ne retient pour le suivi des charges que les exercices ayant au moins une charge strictement positive (> 0 kg)
   const noms = useMemo(
-    () => [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null).map(x => x.nom)))].sort(),
+    () => [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null && Number(x.charge_kg) > 0).map(x => x.nom)))].sort(),
     [seances],
   )
   const exoChoisi = noms.includes(exo) ? exo : noms[0] ?? ''
 
   const { pointsCharge, points1rm } = useMemo(() => {
     const charge: Point[] = seances.flatMap(s => {
-      const c = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null).map(x => Number(x.charge_kg))
+      const c = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null && Number(x.charge_kg) > 0).map(x => Number(x.charge_kg))
       return c.length ? [{ date: s.date_seance, valeur: Math.max(...c) }] : []
     })
     const rm: Point[] = seances.flatMap(s => {
@@ -139,10 +140,7 @@ export default function Suivi() {
     return { pointsCharge: marquerRecords(charge), points1rm: marquerRecords(rm) }
   }, [seances, exoChoisi])
 
-  const { records, pointsCardio, minutes30, km30, ceMois } = useMemo(() => {
-    const moisCourant = aujourdhui().slice(0, 7)
-    const nbCeMois = seances.filter(s => s.date_seance.startsWith(moisCourant)).length
-
+  const { records, pointsCardio, minutes30, km30 } = useMemo(() => {
     const parSemaine = new Map<string, number>()
     for (const s of seances)
       for (const x of s.exercices) {
@@ -160,20 +158,24 @@ export default function Suivi() {
     const min30 = Math.round(cardio30.reduce((total, x) => total + minutesCardioExo(x), 0))
     const k30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0) * (x.series ?? 1), 0)
 
-    const recs = noms.map(nom => {
-      let charge = { valeur: 0, date: '' }
-      let force = { valeur: 0, date: '' }
-      for (const s of seances)
-        for (const x of s.exercices) {
-          if (x.nom !== nom) continue
-          if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) charge = { valeur: Number(x.charge_kg), date: s.date_seance }
-          const f = e1rm(x)
-          if (f !== null && f > force.valeur) force = { valeur: arrondi(f), date: s.date_seance }
-        }
-      return { nom, charge, force }
-    })
+    const recs = noms
+      .map(nom => {
+        let charge = { valeur: 0, date: '' }
+        let force = { valeur: 0, date: '' }
+        for (const s of seances)
+          for (const x of s.exercices) {
+            if (x.nom !== nom) continue
+            if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) {
+              charge = { valeur: Number(x.charge_kg), date: s.date_seance }
+            }
+            const f = e1rm(x)
+            if (f !== null && f > force.valeur) force = { valeur: arrondi(f), date: s.date_seance }
+          }
+        return { nom, charge, force }
+      })
+      .filter(r => r.charge.valeur > 0 && Boolean(r.charge.date))
 
-    return { records: recs, pointsCardio: ptsCardio, minutes30: min30, km30: k30, ceMois: nbCeMois }
+    return { records: recs, pointsCardio: ptsCardio, minutes30: min30, km30: k30 }
   }, [seances, noms])
 
   const mesuresType = mesures.filter(m => m.type === type)
@@ -191,8 +193,6 @@ export default function Suivi() {
 
       {!pret && <Squelette lignes={3} />}
       <div hidden={!pret}>
-        
-
         <div className="deux-colonnes">
           <div>
             <h3>Charges</h3>
@@ -208,7 +208,7 @@ export default function Suivi() {
                 <Courbe nom="Force maximale estimée" points={points1rm} unite="kg" />
               </>
             ) : (
-              <p className="meta">Aucune charge enregistrée pour ce client.</p>
+              <p className="meta">Aucune charge additionnelle (&gt; 0 kg) enregistrée pour ce client.</p>
             )}
 
             <h3>Records</h3>
@@ -225,7 +225,7 @@ export default function Suivi() {
                 ))}
               </ul>
             ) : (
-              <p className="meta">Aucun record pour l'instant.</p>
+              <p className="meta">Aucun record avec charge pour l'instant.</p>
             )}
 
             {pointsCardio.length > 0 && (
@@ -245,8 +245,8 @@ export default function Suivi() {
               {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
             </select>
             <Courbe nom={TYPES[type].label} points={pointsMesure} unite={TYPES[type].unite} cible={cibleMesure} />
-            <form onSubmit={e => lancer(() => ajouter(e))}>
-              <div className="ligne">
+            <form className="carte-section" onSubmit={e => lancer(() => ajouter(e))}>
+              <div className="grille-2">
                 <Champ libelle="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Champ>
                 <Champ libelle={`Valeur (${TYPES[type].unite})`} erreur={verifier(valeur, REGLES.mesure)}><input inputMode="decimal" value={valeur} onChange={e => setValeur(e.target.value)} /></Champ>
               </div>
@@ -256,7 +256,15 @@ export default function Suivi() {
               {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (
                 <li key={m.id}>
                   <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
-                  <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
+                  <button
+                    type="button"
+                    className="btn-icone danger"
+                    aria-label={`Supprimer la mesure du ${courte(m.date_mesure)}`}
+                    title="Supprimer la mesure"
+                    onClick={() => supprimer(m)}
+                  >
+                    <Icone nom="supprimer" />
+                  </button>
                 </li>
               ))}
             </ul>

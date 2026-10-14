@@ -46,9 +46,9 @@ export function SelecteurZonesSensibles({
       <p className="champ-aide">
         Les articulations et le rachis apparaissent en rappel sur le profil. Les muscles déclenchent aussi une alerte lors du choix d’un exercice qui les sollicite.
       </p>
-      <span className="champ-libelle">Articulations et rachis</span>
+      <span className="champ-libelle" style={{ marginTop: '.25rem' }}>Articulations et rachis</span>
       <div className="puces">{Object.entries(ARTICULATIONS).map(puce)}</div>
-      <span className="champ-libelle">Muscles</span>
+      <span className="champ-libelle" style={{ marginTop: '.45rem' }}>Muscles</span>
       <div className="puces">{Object.entries(MUSCLES).map(puce)}</div>
     </fieldset>
   )
@@ -83,20 +83,34 @@ export function FormulaireClient({ onCree, onAnnuler }: { onCree: (id: string) =
   }
 
   return (
-    <form onSubmit={e => lancer(() => creer(e))}>
+    <div className="carte-section premiere-carte formulaire-etroit">
       <h3>Nouveau client</h3>
-      <Champ libelle="Prénom"><input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required autoFocus /></Champ>
-      <Champ libelle="Nom (facultatif)"><input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} /></Champ>
-      <Champ libelle="Objectifs (facultatif)"><textarea value={objectifs} onChange={e => setObjectifs(e.target.value)} /></Champ>
-      <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : ils s'affichent en haut du profil du client.">
-        <textarea value={attention} onChange={e => setAttention(e.target.value)} />
-      </Champ>
-      <SelecteurZonesSensibles zones={zones} onChange={setZones} />
-      <MessageErreur message={erreur} />
-      <div className="ligne">
-        <button type="button" className="secondaire" onClick={onAnnuler}>Annuler</button>
-        <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
-      </div>
-    </form>
+      <form onSubmit={e => lancer(() => creer(e))}>
+        <div className="grille-2">
+          <Champ libelle="Prénom">
+            <input autoCapitalize="words" autoComplete="off" value={prenom} onChange={e => setPrenom(e.target.value)} required autoFocus />
+          </Champ>
+          <Champ libelle="Nom (facultatif)">
+            <input autoCapitalize="words" autoComplete="off" value={nom} onChange={e => setNom(e.target.value)} />
+          </Champ>
+        </div>
+
+        <div className="grille-2">
+          <Champ libelle="Objectifs (facultatif)">
+            <textarea rows={3} value={objectifs} onChange={e => setObjectifs(e.target.value)} />
+          </Champ>
+          <Champ libelle="Points d'attention (facultatif)" aide="Blessures, douleurs, contre-indications : ils s'affichent en haut du profil du client.">
+            <textarea rows={3} value={attention} onChange={e => setAttention(e.target.value)} />
+          </Champ>
+        </div>
+
+        <SelecteurZonesSensibles zones={zones} onChange={setZones} />
+        <MessageErreur message={erreur} />
+        <div className="ligne pied-carte">
+          <button type="submit" disabled={occupe}>{occupe ? 'Ajout en cours…' : 'Ajouter le client'}</button>
+          <button type="button" className="secondaire" onClick={onAnnuler}>Annuler</button>
+        </div>
+      </form>
+    </div>
   )
 }

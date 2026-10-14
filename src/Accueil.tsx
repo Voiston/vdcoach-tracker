@@ -58,7 +58,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
   const ceMois: Record<string, number> = {}
   for (const s of seances) if (s.date_seance >= debutMois) ceMois[s.client_id] = (ceMois[s.client_id] ?? 0) + 1
   const par = Object.fromEntries(clients.map(c => [c.id, c]))
-  const recentes = [...regrouperSeances(seances)].reverse().slice(0, 5) // une séance partagée = une ligne
+  const recentes = [...regrouperSeances(seances)].reverse().slice(0, 5)
 
   const filtre = recherche.trim().toLowerCase()
   const correspond = (c: Client) => `${c.prenom} ${c.nom ?? ''}`.toLowerCase().includes(filtre)
@@ -66,25 +66,43 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
     const valeur = (c: Client) => joursSansSeance(c.id) ?? SANS_SEANCE
     if (tri === 'recent') return [...liste].sort((a, b) => valeur(a) - valeur(b))
     if (tri === 'relance') return [...liste].sort((a, b) => valeur(b) - valeur(a))
-    return liste // déjà triés par prénom
+    return liste
   }
   const actifs = trier(clients.filter(c => c.actif && correspond(c) && (!seulementRelance || doitRelancer(c))))
   const inactifs = seulementRelance ? [] : clients.filter(c => !c.actif && correspond(c))
   const nbARelancer = clients.filter(c => c.actif && doitRelancer(c)).length
 
-  const ligne = (c: Client) => (
-    <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
-      <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
-        <Avatar client={c} />
-        <span className="ligne-texte">
-          <strong>{c.prenom} {c.nom}{c.points_attention ? ' ⚠' : ''}</strong>
-          <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
-          {ceMois[c.id] > 0 && <span className="meta">{ceMois[c.id]} séance{ceMois[c.id] > 1 ? 's' : ''} ce mois-ci</span>}
-        </span>
-      </button>
-      {c.actif && <button type="button" className="lien action-seance" onClick={() => onNouvelleSeance(c.id)} aria-label={`Nouvelle séance pour ${c.prenom}`} title="Nouvelle séance"><span aria-hidden="true">+</span><span className="texte-action"> Séance</span></button>}
-    </li>
-  )
+  const ligne = (c: Client) => {
+    const relance = c.actif && doitRelancer(c)
+    return (
+      <li key={c.id} className={[c.actif ? '' : 'inactif', c.id === actifId ? 'actif' : ''].join(' ').trim()}>
+        <button type="button" className="ligne-client" onClick={() => onOuvrir(c.id)}>
+          <Avatar client={c} />
+          <span className="ligne-texte">
+            <span className="ligne-nom-client">
+              <strong>{c.prenom} {c.nom}</strong>
+              {c.points_attention && <span className="badge-mini-alerte" title={c.points_attention}>⚠</span>}
+              {relance && <span className="puce-relance">À relancer</span>}
+            </span>
+            <span className="meta">{derniere[c.id] ? `Dernière : ${ilYa(derniere[c.id])}` : 'Aucune séance'}</span>
+            {ceMois[c.id] > 0 && <span className="meta">{ceMois[c.id]} séance{ceMois[c.id] > 1 ? 's' : ''} ce mois-ci</span>}
+          </span>
+        </button>
+        {c.actif && (
+          <button
+            type="button"
+            className="lien action-seance"
+            onClick={() => onNouvelleSeance(c.id)}
+            aria-label={`Nouvelle séance pour ${c.prenom}`}
+            title="Nouvelle séance"
+          >
+            <span aria-hidden="true">+</span>
+            <span className="texte-action"> Séance</span>
+          </button>
+        )}
+      </li>
+    )
+  }
 
   return (
     <section>
@@ -94,10 +112,16 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
       {nouveau ? (
         <FormulaireClient onCree={id => { setNouveau(false); onOuvrir(id) }} onAnnuler={() => setNouveau(false)} />
       ) : (
-        <div className="ligne">
+        <div className="actions-entete-clients">
           <button type="button" onClick={() => setNouveau(true)}>+ Nouveau client</button>
           {onVueEnsemble && (
-            <button type="button" className="secondaire" onClick={onVueEnsemble}>⌂ Vue d'ensemble</button>
+            <button
+              type="button"
+              className={`secondaire btn-vue-ensemble${!actifId ? ' actif' : ''}`}
+              onClick={onVueEnsemble}
+            >
+              ⌂ Vue d'ensemble
+            </button>
           )}
         </div>
       )}
@@ -130,7 +154,7 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
 
           <ul className="liste">{actifs.map(ligne)}</ul>
           {!actifs.length && (
-            <p className="meta">
+            <p className="meta" style={{ marginTop: '.75rem' }}>
               {seulementRelance && !filtre ? 'Tous tes clients ont eu une séance récemment. 👍' : 'Aucun client ne correspond.'}
             </p>
           )}
@@ -158,12 +182,12 @@ export default function Accueil({ onOuvrir, onNouvelleSeance, onVueEnsemble, act
           )}
 
           {inactifs.length > 0 && (
-            <>
+            <div style={{ marginTop: '.75rem' }}>
               <button type="button" className="lien" onClick={() => setArchives(a => !a)}>
                 {archives ? 'Masquer' : 'Afficher'} les clients archivés ({inactifs.length})
               </button>
               {archives && <ul className="liste">{inactifs.map(ligne)}</ul>}
-            </>
+            </div>
           )}
         </>
       )}

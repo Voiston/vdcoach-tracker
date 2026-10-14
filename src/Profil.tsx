@@ -4,6 +4,7 @@ import type { Client } from './Clients'
 import { libelleZone } from './definitions'
 import { messageErreur } from './erreurs'
 import { libelleMois, resumeMois } from './facturation-lib'
+import { ilYa } from './format'
 import { Avatar, ClientCtx, ErreurChargement, Squelette } from './ui'
 import Apercu from './Apercu'
 import Seances from './Seances'
@@ -38,6 +39,7 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   const [erreur, setErreur] = useState('')
   const [resume, setResume] = useState<{ n: number; avec: string[]; mois: string } | null>(null)
   const [total, setTotal] = useState<number | null>(null)
+  const [derniereDate, setDerniereDate] = useState<string | null>(null)
 
   async function recharger() {
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).single()
@@ -50,17 +52,20 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
     recharger()
   }, [clientId])
 
-  // Séances du mois et total, recalculés quand on change de rubrique (par exemple après un enregistrement).
-  // Une séance partagée existe en plusieurs lignes : on compte une seule fois chaque session.
+  // Séances du mois, total et dernière séance, recalculés quand on change de rubrique.
   useEffect(() => {
     if (!client) return
     resumeMois(client).then(setResume)
     supabase
       .from('seances')
-      .select('id, session_id')
+      .select('id, session_id, date_seance')
       .eq('client_id', client.id)
+      .order('date_seance', { ascending: false })
       .then(({ data }) => {
-        if (data) setTotal(new Set(data.map(s => s.session_id ?? s.id)).size)
+        if (data) {
+          setTotal(new Set(data.map(s => s.session_id ?? s.id)).size)
+          setDerniereDate(data[0]?.date_seance ?? null)
+        }
       })
   }, [client?.id, client?.groupe_facturation, rubrique])
 
@@ -70,16 +75,41 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   const saisie = rubrique === 'seance'
   const zones = (client.zones_sensibles ?? []).map(libelleZone)
 
+  const blocAlerteSante = (client.points_attention || zones.length > 0) && (
+    <div className="profil-alerte-sante" role="status">
+      {client.points_attention && (
+        <span>
+          <strong>⚠ Attention :</strong> {client.points_attention}
+        </span>
+      )}
+      {zones.length > 0 && (
+        <div className="profil-alerte-zones">
+          <span><strong>Zones à ménager :</strong></span>
+          {zones.map(z => (
+            <span key={z} className="puce-zone-alerte">{z}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <ClientCtx.Provider value={{ client, recharger }}>
       <div className="profil">
         <div className="profil-barre-mobile">
           <button
             type="button"
-            className={saisie ? 'lien retour' : 'lien retour vers-liste'}
+            className="lien retour"
             onClick={saisie ? () => onRubrique('seances') : onRetour}
           >
-            {saisie ? '← Annuler' : '← Clients'}
+            {saisie ? (
+              '← Annuler'
+            ) : (
+              <>
+                <span className="libelle-mobile">← Clients</span>
+                <span className="libelle-bureau">← Vue d'ensemble</span>
+              </>
+            )}
           </button>
           {saisie && (
             <span className="profil-mini-identite">
@@ -93,34 +123,37 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
           <div className="profil-entete">
             <div className="profil-identite">
               <h2><Avatar client={client} grand /><span>{client.prenom} {client.nom}</span></h2>
-              {!client.actif && <p className="meta">Client archivé</p>}
-              {resume && (
-                <p className="meta">
-                  {resume.n} séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
-                  {total !== null && total > 0 && ` · ${total} au total`}
-                  {resume.avec.length > 0 && ` · facturées avec ${resume.avec.join(' & ')}`}
-                </p>
-              )}
+              <div className="profil-meta-badges">
+                {!client.actif && <span className="badge-stat alerte">Client archivé</span>}
+                {resume && (
+                  <span className="badge-stat">
+                    <strong>{resume.n}</strong> séance{resume.n > 1 ? 's' : ''} en {libelleMois(resume.mois)}
+                  </span>
+                )}
+                {total !== null && total > 0 && (
+                  <span className="badge-stat">
+                    <strong>{total}</strong> au total
+                  </span>
+                )}
+                {derniereDate && (
+                  <span className="badge-stat">
+                    Dernière : <strong>{ilYa(derniereDate)}</strong>
+                  </span>
+                )}
+                {resume && resume.avec.length > 0 && (
+                  <span className="badge-stat">
+                    Facturé avec <strong>{resume.avec.join(' & ')}</strong>
+                  </span>
+                )}
+              </div>
             </div>
             <button type="button" className="btn-nouvelle-seance" onClick={() => onRubrique('seance')}>
               + Séance
             </button>
-            {(client.points_attention || zones.length > 0) && (
-              <p className="attention">
-                ⚠ {client.points_attention}
-                {client.points_attention && zones.length > 0 ? ' · ' : ''}
-                {zones.length > 0 && <strong>Zones à ménager : {zones.join(', ')}</strong>}
-              </p>
-            )}
+            {blocAlerteSante}
           </div>
         ) : (
-          (client.points_attention || zones.length > 0) && (
-            <p className="attention" style={{ marginBottom: '.75rem' }}>
-              ⚠ {client.points_attention}
-              {client.points_attention && zones.length > 0 ? ' · ' : ''}
-              {zones.length > 0 && <strong>Zones : {zones.join(', ')}</strong>}
-            </p>
-          )
+          blocAlerteSante && <div style={{ marginBottom: '.75rem' }}>{blocAlerteSante}</div>
         )}
 
         {saisie ? (
@@ -146,15 +179,19 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
             {rubrique === 'suivi' && (
               <>
                 <Suivi />
-                <h3>Muscles travaillés</h3>
-                <Muscles />
+                <div className="separateur-section">
+                  <h3>Muscles travaillés</h3>
+                  <Muscles />
+                </div>
               </>
             )}
             {rubrique === 'objectifs' && (
               <>
                 <Objectifs />
-                <h3>Bilans physiques</h3>
-                <Bilans />
+                <div className="separateur-section">
+                  <h3>Bilans physiques</h3>
+                  <Bilans />
+                </div>
               </>
             )}
             {rubrique === 'fiche' && <Fiche onRetour={onRetour} />}

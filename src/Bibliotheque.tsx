@@ -4,6 +4,7 @@ import { messageErreur } from './erreurs'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
 import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
 import LegendeNiveaux from './LegendeNiveaux'
+import Icone from './icones'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -49,7 +50,6 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
     if (id) {
       const { error } = await supabase.from('bibliotheque_exercices').update(champs).eq('id', id)
       if (error) return setErreur(message(error.code) ?? messageErreur(error))
-      // Si le nom a changé, on propage le renommage dans les séances, modèles et objectifs existants pour ne pas couper les statistiques
       if (form.ancienNom && form.ancienNom !== nouveauNom) {
         await Promise.all([
           supabase.from('exercices').update({ nom: nouveauNom }).ilike('nom', form.ancienNom),
@@ -100,45 +100,50 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       <MessageErreur message={erreur} reessayer={charger} />
 
       {form ? (
-        <form className="formulaire-etroit" onSubmit={e => lancer(() => enregistrer(e))}>
-          <Champ libelle="Nom"><input autoComplete="off" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required /></Champ>
-          <div className="ligne">
-            <Champ libelle="Groupe musculaire"><select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
-              {GROUPES.map(g => <option key={g}>{g}</option>)}
-            </select></Champ>
-            <Champ libelle="Matériel"><select value={form.materiel} onChange={e => setForm({ ...form, materiel: e.target.value })}>
-              {MATERIELS.map(m => <option key={m}>{m}</option>)}
-            </select></Champ>
-          </div>
-          <Champ libelle="Consignes de technique (facultatif)"><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Champ>
-          <Champ libelle="Lien vidéo (facultatif)"><input inputMode="url" type="url" value={form.video_url} onChange={e => setForm({ ...form, video_url: e.target.value })} /></Champ>
-          <fieldset>
-            <legend>Muscles sollicités</legend>
-            {form.muscles.map((m, i) => (
-              <div className="ligne" key={i}>
-                <select aria-label="Muscle" value={m.muscle} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, muscle: e.target.value } : x)) })}>
-                  {Object.entries(MUSCLES).map(([k, libelle]) => <option key={k} value={k}>{libelle}</option>)}
-                </select>
-                <select aria-label="Niveau de sollicitation" value={m.coefficient} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, coefficient: e.target.value } : x)) })}>
-                  {NIVEAUX.map(n => <option key={n.valeur} value={String(n.valeur)}>{n.libelle}</option>)}
-                </select>
-                <button type="button" className="lien danger" aria-label="Retirer ce muscle" onClick={() => setForm({ ...form, muscles: form.muscles.filter((_, j) => j !== i) })}>✕</button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="secondaire"
-              onClick={() => setForm({ ...form, muscles: [...form.muscles, { muscle: Object.keys(MUSCLES).find(k => !form.muscles.some(m => m.muscle === k)) ?? 'quadriceps', coefficient: form.muscles.length ? '0.5' : '1' }] })}
-            >
-              + Ajouter un muscle
-            </button>
-            <p className="champ-aide">Principal : le muscle qui travaille le plus. Secondaire : environ la moitié. Stabilisateur : environ un quart. Ces niveaux pondèrent le calcul des séries par muscle.</p>
-          </fieldset>
-          <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : form.id ? 'Enregistrer' : "Ajouter l'exercice"}</button>
-          <button type="button" className="secondaire" onClick={() => { setForm(null); setErreur('') }}>Annuler</button>
-        </form>
+        <div className="carte-section premiere-carte formulaire-etroit" style={{ marginBottom: '1.25rem' }}>
+          <h3>{form.id ? "Modifier l'exercice" : 'Nouvel exercice'}</h3>
+          <form onSubmit={e => lancer(() => enregistrer(e))}>
+            <Champ libelle="Nom"><input autoComplete="off" value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} required /></Champ>
+            <div className="grille-2">
+              <Champ libelle="Groupe musculaire"><select value={form.groupe} onChange={e => setForm({ ...form, groupe: e.target.value })}>
+                {GROUPES.map(g => <option key={g}>{g}</option>)}
+              </select></Champ>
+              <Champ libelle="Matériel"><select value={form.materiel} onChange={e => setForm({ ...form, materiel: e.target.value })}>
+                {MATERIELS.map(m => <option key={m}>{m}</option>)}
+              </select></Champ>
+            </div>
+            <Champ libelle="Consignes de technique (facultatif)"><textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Champ>
+            <Champ libelle="Lien vidéo (facultatif)"><input inputMode="url" type="url" value={form.video_url} onChange={e => setForm({ ...form, video_url: e.target.value })} /></Champ>
+            <fieldset>
+              <legend>Muscles sollicités</legend>
+              {form.muscles.map((m, i) => (
+                <div className="ligne" key={i}>
+                  <select aria-label="Muscle" value={m.muscle} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, muscle: e.target.value } : x)) })}>
+                    {Object.entries(MUSCLES).map(([k, libelle]) => <option key={k} value={k}>{libelle}</option>)}
+                  </select>
+                  <select aria-label="Niveau de sollicitation" value={m.coefficient} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, coefficient: e.target.value } : x)) })}>
+                    {NIVEAUX.map(n => <option key={n.valeur} value={String(n.valeur)}>{n.libelle}</option>)}
+                  </select>
+                  <button type="button" className="btn-icone danger" aria-label="Retirer ce muscle" onClick={() => setForm({ ...form, muscles: form.muscles.filter((_, j) => j !== i) })}>✕</button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="secondaire"
+                onClick={() => setForm({ ...form, muscles: [...form.muscles, { muscle: Object.keys(MUSCLES).find(k => !form.muscles.some(m => m.muscle === k)) ?? 'quadriceps', coefficient: form.muscles.length ? '0.5' : '1' }] })}
+              >
+                + Ajouter un muscle
+              </button>
+              <p className="champ-aide">Principal : le muscle qui travaille le plus. Secondaire : environ la moitié. Stabilisateur : environ un quart. Ces niveaux pondèrent le calcul des séries par muscle.</p>
+            </fieldset>
+            <div className="ligne pied-carte">
+              <button type="submit" disabled={occupe}>{occupe ? 'Enregistrement…' : form.id ? 'Enregistrer' : "Ajouter l'exercice"}</button>
+              <button type="button" className="secondaire" onClick={() => { setForm(null); setErreur('') }}>Annuler</button>
+            </div>
+          </form>
+        </div>
       ) : (
-        <button type="button" onClick={() => setForm(vide())}>+ Nouvel exercice</button>
+        <button type="button" style={{ marginBottom: '.75rem' }} onClick={() => setForm(vide())}>+ Nouvel exercice</button>
       )}
 
       <div className="ligne">
@@ -169,9 +174,37 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
               {x.notes && <p>{x.notes}</p>}
               {lienSur(x.video_url) && <a href={lienSur(x.video_url)!} target="_blank" rel="noopener noreferrer">Vidéo</a>}
             </div>
-            <div className="ligne">
-              <button className="lien" onClick={() => { setForm({ id: x.id, ancienNom: x.nom, nom: x.nom, groupe: x.groupe, materiel: x.materiel, notes: x.notes ?? '', video_url: x.video_url ?? '', muscles: x.exercice_muscles.map(m => ({ muscle: m.muscle, coefficient: String(Number(m.coefficient)) })) }); setErreur('') }}>Modifier</button>
-              <button className="lien danger" onClick={() => supprimer(x)}>Supprimer</button>
+            <div className="actions-icone">
+              <button
+                type="button"
+                className="btn-icone"
+                aria-label={`Modifier ${x.nom}`}
+                title="Modifier l'exercice"
+                onClick={() => {
+                  setForm({
+                    id: x.id,
+                    ancienNom: x.nom,
+                    nom: x.nom,
+                    groupe: x.groupe,
+                    materiel: x.materiel,
+                    notes: x.notes ?? '',
+                    video_url: x.video_url ?? '',
+                    muscles: x.exercice_muscles.map(m => ({ muscle: m.muscle, coefficient: String(Number(m.coefficient)) })),
+                  })
+                  setErreur('')
+                }}
+              >
+                <Icone nom="modifier" />
+              </button>
+              <button
+                type="button"
+                className="btn-icone danger"
+                aria-label={`Supprimer ${x.nom}`}
+                title="Supprimer l'exercice"
+                onClick={() => supprimer(x)}
+              >
+                <Icone nom="supprimer" />
+              </button>
             </div>
           </li>
         ))}

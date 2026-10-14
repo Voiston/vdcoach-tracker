@@ -10,6 +10,9 @@ const CHEMINS: Record<string, string> = {
   suivi: 'M4 19V5M4 19h16M8 15l4-4 3 3 5-6',
   exercices: 'M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12',
   clients: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 19c0-3 3-5 6-5s6 2 6 5M17 11a2.5 2.5 0 1 0 0-5M17 14c2.5.3 4 2 4 5',
+  modifier: 'M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3zM15 5l4 4',
+  supprimer: 'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6',
+  pdf: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M12 18v-6M9.5 15.5L12 18l2.5-2.5',
 }
 
 export default function Icone({ nom }: { nom: string }) {

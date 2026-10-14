@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { courte, dateFr, ilYa, nb } from './format'
+import { dateFr, nb } from './format'
 import { EtatVide, MessageErreur, Squelette, TitreSection, useClient } from './ui'
 import { MUSCLES } from './definitions'
 import type { Rubrique } from './Profil'
@@ -22,8 +22,6 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const client = useClient()
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
-  const [total, setTotal] = useState(0)
-  const [ceMois, setCeMois] = useState(0)
   const [dernieres, setDernieres] = useState<SeanceComplete[]>([])
   const [donnees, setDonnees] = useState<DonneesObjectifs | null>(null)
   const [muscles, setMuscles] = useState<{ muscle: string; total: number; variation: { texte: string; classe: string } | null }[]>([])
@@ -31,7 +29,6 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const [evolution, setEvolution] = useState<string | null>(null)
 
   async function charger() {
-    const debutMois = `${new Date().toLocaleDateString('sv-SE').slice(0, 7)}-01`
     const jour = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString('sv-SE')
     const j30 = jour(30)
     const j60 = jour(60)
@@ -53,8 +50,6 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     setErreur('')
 
     const toutes = (s.data ?? []) as unknown as SeanceComplete[]
-    setTotal(toutes.length)
-    setCeMois(toutes.filter(x => x.date_seance >= debutMois).length)
     setDernieres(toutes.slice(0, 3))
 
     const derniereMesure: Record<string, number> = {}
@@ -105,15 +100,13 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
       {!pret && !erreur && <Squelette lignes={3} />}
       {pret && !erreur && (
         <>
-          
-
           <div className="colonnes-auto">
             <div className="groupe">
               {client.objectifs && (
-                <>
-                  <h3>Objectif général</h3>
+                <div className="encart-objectif-general">
+                  <span className="champ-libelle">Objectif général</span>
                   <p>{client.objectifs}</p>
-                </>
+                </div>
               )}
 
               <TitreSection icone="objectif">Objectifs chiffrés</TitreSection>

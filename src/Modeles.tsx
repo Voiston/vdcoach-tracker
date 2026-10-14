@@ -4,6 +4,7 @@ import { messageErreur } from './erreurs'
 import { etiquettesSuperset, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
+import Icone from './icones'
 import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
 
 type ModeleExo = LigneProgramme & { ordre: number }
@@ -22,7 +23,6 @@ export default function Modeles() {
   const [modelePdf, setModelePdf] = useState<Modele | null>(null)
   const [masques, setMasques] = useState<string[]>([])
 
-  // Création d'un modèle
   const [creation, setCreation] = useState(false)
   const [nomNouveau, setNomNouveau] = useState('')
   const [nomsChoisis, setNomsChoisis] = useState<string[]>([])
@@ -137,9 +137,13 @@ export default function Modeles() {
 
   return (
     <section>
-      <div className="entete-section">
+      <div className="entete-section entete-colonne">
         <h3>Modèles de séance</h3>
-        {!creation && <button type="button" onClick={ouvrirCreation}>+ Nouveau modèle</button>}
+        {!creation && (
+          <button type="button" className="secondaire btn-compact" onClick={ouvrirCreation}>
+            + Nouveau modèle
+          </button>
+        )}
       </div>
 
       {creation && (
@@ -156,7 +160,7 @@ export default function Modeles() {
                   {nomsChoisis.map((n, i) => (
                     <li key={`${n}-${i}`}>
                       <span>{n}</span>
-                      <button type="button" className="lien danger outil" aria-label={`Retirer ${n}`} onClick={() => retirerNom(i)}>✕</button>
+                      <button type="button" className="btn-icone danger" aria-label={`Retirer ${n}`} onClick={() => retirerNom(i)}>✕</button>
                     </li>
                   ))}
                 </ol>
@@ -165,7 +169,7 @@ export default function Modeles() {
             </div>
             <p className="meta">Par défaut : 3 séries de 10 répétitions (30 s pour le cardio). Tu ajusteras les charges pendant la séance.</p>
             <MessageErreur message={erreurCreation} />
-            <div className="ligne">
+            <div className="ligne pied-carte">
               <button type="submit" disabled={occupe}>{occupe ? 'Création…' : 'Créer le modèle'}</button>
               <button type="button" className="secondaire" onClick={fermerCreation}>Annuler</button>
             </div>
@@ -190,28 +194,57 @@ export default function Modeles() {
           return (
             <li key={m.id}>
               <div>
-                <strong>{m.nom}</strong>
-                <p className="meta">
-                  {exos.length} exercice(s){m.duree_min ? ` · ${m.duree_min} min` : ''}
-                </p>
-                {exos.map((x, idx) => {
-                  const cardioTxt = resumeCardio(x)
-                  return (
-                    <p key={idx} className="meta">
-                      {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
-                      {x.nom}
-                      {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
-                      {cardioTxt ? ` — ${cardioTxt}` : ''}
+                <div className="modele-entete">
+                  <div>
+                    <strong>{m.nom}</strong>
+                    <p className="meta">
+                      {exos.length} exercice(s){m.duree_min ? ` · ${m.duree_min} min` : ''}
                     </p>
-                  )
-                })}
-                <div className="ligne" style={{ flexWrap: 'wrap', marginTop: '.35rem' }}>
-                  {exos.length > 0 && (
-                    <button className="lien" onClick={() => setModelePdf(m)}>Programme PDF</button>
-                  )}
-                  <button className="lien" onClick={() => setEnRenommage(m)}>Renommer</button>
-                  <button className="lien danger" onClick={() => supprimer(m)}>Supprimer</button>
+                  </div>
+                  <div className="actions-icone">
+                    <button
+                      type="button"
+                      className="btn-icone"
+                      aria-label={`Renommer ${m.nom}`}
+                      title="Renommer le modèle"
+                      onClick={() => setEnRenommage(m)}
+                    >
+                      <Icone nom="modifier" />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-icone danger"
+                      aria-label={`Supprimer ${m.nom}`}
+                      title="Supprimer le modèle"
+                      onClick={() => supprimer(m)}
+                    >
+                      <Icone nom="supprimer" />
+                    </button>
+                  </div>
                 </div>
+
+                <div className="modele-liste-exos">
+                  {exos.map((x, idx) => {
+                    const cardioTxt = resumeCardio(x)
+                    return (
+                      <p key={idx} className="meta">
+                        {etiquettes[idx] && <span className="puce superset-mini">{etiquettes[idx]}</span>}
+                        {x.nom}
+                        {x.series && x.repetitions ? ` — ${x.series}×${x.repetitions}` : ''}
+                        {cardioTxt ? ` — ${cardioTxt}` : ''}
+                      </p>
+                    )
+                  })}
+                </div>
+
+                {exos.length > 0 && (
+                  <div className="pied-carte">
+                    <button type="button" className="secondaire btn-pdf" onClick={() => setModelePdf(m)}>
+                      <Icone nom="pdf" />
+                      Programme PDF
+                    </button>
+                  </div>
+                )}
               </div>
             </li>
           )
