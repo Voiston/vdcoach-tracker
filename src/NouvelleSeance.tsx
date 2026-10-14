@@ -91,7 +91,6 @@ const versLignes = (exos: Exo[]): Ligne[] =>
         .sort((a, b) => a.ordre - b.ordre)
         .map(x => ({
           nom: x.nom,
-          // Pas de répétitions mais une durée enregistrée : l'exercice se fait au temps
           mode: (x.repetitions == null && secDe(x) != null ? 'temps' : 'reps') as Mode,
           series: txt(x.series),
           repetitions: txt(x.repetitions),
@@ -108,7 +107,6 @@ const versLignes = (exos: Exo[]): Ligne[] =>
 
 const EXOS = 'exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, repos_sec, reglage, lie_suivant)'
 
-// Règle de progression simple (double progression) : à modifier selon ta façon de coacher.
 const PLAFOND_REPS = 12
 const PAS_KG = 2.5
 
@@ -265,13 +263,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [invites, setInvites] = useState<string[]>([])
   const [copierCharges, setCopierCharges] = useState(false)
 
-  // Mode Terrain : un seul exercice déplié à la fois + barre de pilotage mobile
+  // Mode Terrain Plein Écran
   const [modeTerrain, setModeTerrain] = useState(false)
   const [indexTerrain, setIndexTerrain] = useState(0)
+  const [ecranFinTerrain, setEcranFinTerrain] = useState(false)
 
-  // Seuls les exercices du groupe « Cardio » ont une distance
   const estCardio = (nom: string) => biblio[cle(nom)]?.groupe === 'Cardio'
-  // Temps = exercice cardio, ou exercice basculé en mode « Temps »
   const estTemps = (l: Ligne) => estCardio(l.nom) || l.mode === 'temps'
 
   const valeurs = (l: Ligne): ValeursExo => {
@@ -310,10 +307,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     }
   }
 
-  /**
-   * Remplacement intelligent : conserve les séries, répétitions/durée, repos et superset
-   * planifiés sur la ligne remplacée, mais injecte la charge et le réglage connus du nouvel exercice.
-   */
   function remplacerLigneIntelligente(ancienne: Ligne, nouveauNom: string): Ligne {
     if (!ancienne.nom.trim() || !conserverParametres) {
       return { ...creerLignePreRemplie(nouveauNom), lie_suivant: ancienne.lie_suivant }
@@ -403,6 +396,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setLignes(nouvelles)
     setModeleChargeId(data.id as string)
     setIndexTerrain(0)
+    setEcranFinTerrain(false)
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
   }
@@ -588,7 +582,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       const nouvelle = creerLignePreRemplie(nom)
       setLignes(l => {
         const sansVide = l.filter(x => x.nom.trim() !== '')
-        return [...sansVide, nouvelle]
+        const res = [...sansVide, nouvelle]
+        if (modeTerrain) {
+          setIndexTerrain(res.length - 1)
+          setEcranFinTerrain(false)
+        }
+        return res
       })
     } else if (choix.type === 'inserer_apres') {
       const nouvelle = creerLignePreRemplie(nom)
@@ -597,7 +596,10 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         copie.splice(choix.index + 1, 0, nouvelle)
         return copie
       })
-      if (modeTerrain) setIndexTerrain(choix.index + 1)
+      if (modeTerrain) {
+        setIndexTerrain(choix.index + 1)
+        setEcranFinTerrain(false)
+      }
     } else if (choix.type === 'remplacer') {
       setLignes(l => l.map((x, j) => (j === choix.index ? remplacerLigneIntelligente(x, nom) : x)))
     }
@@ -613,11 +615,19 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         copie.splice(idx + 1, 0, ...nouvelles)
         return copie
       })
-      if (modeTerrain) setIndexTerrain(idx + 1)
+      if (modeTerrain) {
+        setIndexTerrain(idx + 1)
+        setEcranFinTerrain(false)
+      }
     } else {
       setLignes(l => {
         const sansVide = l.filter(x => x.nom.trim() !== '')
-        return [...sansVide, ...nouvelles]
+        const res = [...sansVide, ...nouvelles]
+        if (modeTerrain) {
+          setIndexTerrain( Math.max(0, res.length - nouvelles.length))
+          setEcranFinTerrain(false)
+        }
+        return res
       })
     }
     setChoix(null)
@@ -646,9 +656,9 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       copie.splice(i + 1, 0, { ...l[i], valide: false, passe: false })
       return copie
     })
+    if (modeTerrain) setIndexTerrain(i + 1)
   }
 
-  // Bascule un exercice entre répétitions et temps, sans effacer ce qui a été saisi dans l'autre mode
   function changerMode(i: number, cible: Mode) {
     setLignes(l =>
       l.map((x, j) => {
@@ -722,23 +732,20 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setLignes(versLignes(s.exercices))
     setModeleChargeId(null)
     setIndexTerrain(0)
+    setEcranFinTerrain(false)
     if (s.duree_min) setDuree(txt(s.duree_min))
     setErreur('')
   }
 
-  /* ---------- Pilotage Mode Terrain & Déclenchement automatique du repos ---------- */
-  function scrollerVersExercice(idx: number) {
-    setTimeout(() => {
-      document.getElementById(`exo-carte-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 60)
-  }
-
-  function trouverProchainExercice(depuis: number, etatLignes: Ligne[]): number {
+  /* ---------- Pilotage Mode Terrain Plein Écran ---------- */
+  function trouverProchainExercice(depuis: number, etatLignes: Ligne[]): number | null {
+    // 1. Cherche le prochain exercice non validé et non passé après l'index actuel
     for (let k = depuis + 1; k < etatLignes.length; k++) {
       if (!etatLignes[k].valide && !etatLignes[k].passe) return k
     }
+    // 2. Cherche un exercice non validé (y compris ceux mis en attente plus tôt)
     const nonFait = etatLignes.findIndex((l, k) => k !== depuis && !l.valide)
-    return nonFait !== -1 ? nonFait : depuis
+    return nonFait !== -1 ? nonFait : null
   }
 
   function declencherReposSiPrevu(ligne: Ligne | undefined) {
@@ -759,29 +766,31 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const prochaines = lignes.map((x, j) => (j === i ? { ...x, valide: true, passe: false } : x))
     setLignes(prochaines)
     const suivant = trouverProchainExercice(i, prochaines)
-    setIndexTerrain(suivant)
-    if (suivant !== i) scrollerVersExercice(suivant)
+    if (suivant !== null) {
+      setIndexTerrain(suivant)
+      setEcranFinTerrain(false)
+    } else {
+      // Tous les exercices sont faits : on ouvre l'écran de fin de séance
+      setEcranFinTerrain(true)
+    }
   }
 
   function passerExerciceTerrain(i: number) {
     const prochaines = lignes.map((x, j) => (j === i ? { ...x, passe: true, valide: false } : x))
     setLignes(prochaines)
     const suivant = trouverProchainExercice(i, prochaines)
-    setIndexTerrain(suivant)
-    if (suivant !== i) scrollerVersExercice(suivant)
+    if (suivant !== null) {
+      setIndexTerrain(suivant)
+      setEcranFinTerrain(false)
+    }
   }
 
-  function basculerModeTerrain() {
-    setModeTerrain(actuel => {
-      const prochain = !actuel
-      if (prochain) {
-        const premierNonFait = lignes.findIndex(l => !l.valide)
-        const cible = premierNonFait !== -1 ? premierNonFait : 0
-        setIndexTerrain(cible)
-        scrollerVersExercice(cible)
-      }
-      return prochain
-    })
+  function ouvrirModeTerrain(indexDepart?: number) {
+    const premierNonFait = lignes.findIndex(l => !l.valide)
+    const cible = indexDepart ?? (premierNonFait !== -1 ? premierNonFait : 0)
+    setIndexTerrain(cible)
+    setEcranFinTerrain(false)
+    setModeTerrain(true)
   }
 
   function echec(message: string) {
@@ -923,572 +932,901 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         (estTemps(l) ? verifier(l.duree_sec, REGLES.duree_sec) : verifier(l.repetitions, REGLES.repetitions)),
     )
 
-  const ligneTerrainCourante = lignes[indexTerrain] ?? lignes[0]
-  const reposTerrainSec = num(ligneTerrainCourante?.repos_sec ?? '')
-  const supTerrainCourant = supersets[indexTerrain]
+  // Données de l'exercice affiché en Mode Terrain Plein Écran
+  const iTerrain = Math.min(indexTerrain, Math.max(0, lignes.length - 1))
+  const lTerrain = lignes[iTerrain] ?? vide()
+  const dernierTerrain = derniers[cle(lTerrain.nom)]
+  const ficheTerrain = biblio[cle(lTerrain.nom)]
+  const cardioTerrain = estCardio(lTerrain.nom)
+  const tempsTerrain = estTemps(lTerrain)
+  const propTerrain = dernierTerrain ? proposition(dernierTerrain, tempsTerrain) : null
+  const supTerrain = supersets[iTerrain]
+  const alertesTerrain = lTerrain.nom.trim()
+    ? zonesSensiblesSollicitees(
+        { nom: lTerrain.nom, groupe: ficheTerrain?.groupe, muscles: ficheTerrain?.exercice_muscles ?? [] },
+        zonesSensibles,
+      )
+    : []
+  // Exercices partenaires du même superset (ex. A1 <-> A2)
+  const partenairesSuperset =
+    supTerrain?.groupe !== null && supTerrain?.groupe !== undefined
+      ? lignes
+          .map((x, idx) => ({ ligne: x, idx, sup: supersets[idx] }))
+          .filter(item => item.idx !== iTerrain && item.sup?.groupe === supTerrain.groupe)
+      : []
+
   const exoRemplaceNom = choix?.type === 'remplacer' ? lignes[choix.index]?.nom.trim() || null : null
 
   return (
-    <>
-      <Chronometre />
-      <form onSubmit={enregistrer} className={modeTerrain ? 'avec-barre-terrain' : undefined}>
-        {brouillon && (
-          <div className="brouillon" role="status">
-            <p>
-              <strong>Séance en cours retrouvée</strong>
-              {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
-            </p>
-            <div className="ligne">
-              <button type="button" onClick={reprendreBrouillon}>Reprendre</button>
-              <button type="button" className="secondaire" onClick={abandonnerBrouillon}>Abandonner</button>
-            </div>
-          </div>
-        )}
-
-        <div className="entete-seance-rapide">
-          <Champ libelle="Date">
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
-          </Champ>
-          <div className="champ">
-            <span className="champ-libelle">Durée (min)</span>
-            <div className="durees-rapides">
-              {DUREES_RAPIDES.map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  className={`puce-choix${duree === d ? ' actif' : ''}`}
-                  aria-pressed={duree === d}
-                  onClick={() => setDuree(duree === d ? '' : d)}
-                >
-                  {d}
-                </button>
-              ))}
-              <input
-                className="duree-input"
-                inputMode="numeric"
-                placeholder="Autre"
-                aria-label="Durée personnalisée en minutes"
-                value={duree}
-                onChange={e => setDuree(e.target.value)}
-              />
-            </div>
-            {verifier(duree, REGLES.duree) && <span className="champ-erreur" role="alert">{verifier(duree, REGLES.duree)}</span>}
-          </div>
-        </div>
-
-        {!seanceId && autres.length > 0 && (
-          <div className="participants">
-            <span className="champ-libelle">Séance partagée avec</span>
-            {puces.length > 0 && (
-              <div className="puces">
-                {puces.map(c => (
-                  <button key={c.id} type="button" className={`puce-choix${invites.includes(c.id) ? ' actif' : ''}`} aria-pressed={invites.includes(c.id)} onClick={() => basculerInvite(c.id)}>
-                    {invites.includes(c.id) ? '✓ ' : '+ '}{c.prenom}
-                  </button>
-                ))}
-              </div>
-            )}
-            <select aria-label="Ajouter un autre client à la séance" value="" onChange={e => e.target.value && setInvites(l => [...l, e.target.value])}>
-              <option value="">Ajouter un autre client…</option>
-              {autres.filter(c => !puces.some(p => p.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
-            </select>
-            {invites.length > 0 && (
-              <>
-                <p className="meta">La séance sera enregistrée pour chaque participant, avec les mêmes exercices, et ne comptera que pour une séance en facturation.</p>
-                <label className="case">
-                  <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
-                  Copier aussi les charges et réglages (sinon à compléter dans leur profil)
-                </label>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="entete-exercices-terrain">
-          <h3>Exercices</h3>
-          <div className="actions-entete-exos">
-            {peutToutProgresser && (
-              <button
-                type="button"
-                className="secondaire btn-compact"
-                title="Appliquer la progression automatique sur tous les exercices"
-                onClick={progresserTouteLaSeance}
-              >
-                ↑ Tout progresser
-              </button>
-            )}
-            {saisis.length > 0 && (
-              <button
-                type="button"
-                className={`btn-compact ${modeTerrain ? '' : 'secondaire'}`}
-                aria-pressed={modeTerrain}
-                onClick={basculerModeTerrain}
-              >
-                ⚡ Mode Terrain {modeTerrain ? `(${nbTermines}/${saisis.length})` : ''}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {!seanceId && (recentes.length > 0 || modeles.length > 0) && (
-          <div className="raccourcis-seance">
-            {recentes.length > 0 && (
-              <div className="puces">
-                <span className="meta">Reprendre :</span>
-                {recentes.map((s, idx) => (
-                  <button key={s.id} type="button" className="puce-choix" onClick={() => reprendreSeance(s)}>
-                    ↺ {idx === 0 ? `Dernière (${courte(s.date_seance)})` : courte(s.date_seance)} ({s.exercices.length})
-                  </button>
-                ))}
-              </div>
-            )}
-            {modelesFavoris.length > 0 && (
-              <div className="puces">
-                <span className="meta">★ Favoris :</span>
-                {modelesFavoris.map(m => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`puce-choix${modeleChargeId === m.id ? ' actif' : ''}`}
-                    onClick={() => appliquerModele(m.id)}
-                  >
-                    ★ {m.nom}
-                  </button>
-                ))}
-              </div>
-            )}
-            {modeles.length > 0 && (
-              <select value={modeleChargeId ?? ''} onChange={e => appliquerModele(e.target.value)}>
-                <option value="">Charger un modèle…</option>
-                {modeles.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {modelesFavIds.has(m.id) ? `★ ${m.nom}` : m.nom}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-
-        {lignes.map((l, i) => {
-          const dernier = derniers[cle(l.nom)]
-          const fiche = biblio[cle(l.nom)]
-          const cardio = estCardio(l.nom)
-          const temps = estTemps(l)
-          const prop = dernier ? proposition(dernier, temps) : null
-          const sup = supersets[i]
-          const lieAvecSuivant = l.lie_suivant && i < lignes.length - 1
-          const estFocusTerrain = modeTerrain && i === indexTerrain
-          const replieParTerrain = modeTerrain && i !== indexTerrain && Boolean(l.nom.trim())
-          const estReplie = (l.valide || replieParTerrain) && Boolean(l.nom.trim())
-
-          const classes = [
-            'exercice',
-            sup.groupe !== null ? `superset-groupe grp-sup-${sup.groupe}` : '',
-            lieAvecSuivant ? 'lie-suivant' : '',
-            estFocusTerrain ? 'focus-terrain' : '',
-            l.passe && !l.valide ? 'exo-passe' : '',
-          ].filter(Boolean).join(' ')
-
-          const alertesZones = l.nom.trim()
-            ? zonesSensiblesSollicitees(
-                { nom: l.nom, groupe: fiche?.groupe, muscles: fiche?.exercice_muscles ?? [] },
-                zonesSensibles,
-              )
-            : []
-          const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
-
-          const resumeCompact = temps
-            ? [
-                resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) }),
-                l.charge_kg ? `@ ${l.charge_kg} kg` : '',
-              ].filter(Boolean).join(' ')
-            : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
-                .filter(Boolean)
-                .join(' ')
-          const reposTxt = libelleRepos(num(l.repos_sec))
-
-          if (estReplie) {
-            return (
-              <div id={`exo-carte-${i}`} className={`${classes} compact`} key={i}>
-                <div className="exercice-entete">
-                  <button
-                    type="button"
-                    className={`btn-valide${l.valide ? ' actif' : l.passe ? ' passe' : ''}`}
-                    aria-label={l.valide ? 'Déplier cet exercice' : 'Marquer cet exercice comme fait'}
-                    onClick={() => {
-                      if (modeTerrain && !l.valide) {
-                        validerTerrainEtAvancer(i)
-                      } else {
-                        if (!l.valide) declencherReposSiPrevu(l)
-                        maj(i, 'valide', !l.valide)
-                        if (modeTerrain) setIndexTerrain(i)
-                      }
-                    }}
-                  >
-                    {l.valide ? '✓' : l.passe ? '⏭' : i + 1}
-                  </button>
-                  {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
-                  <button
-                    type="button"
-                    className="exercice-compact-texte"
-                    onClick={() => {
-                      if (modeTerrain) {
-                        setIndexTerrain(i)
-                      } else {
-                        maj(i, 'valide', false)
-                      }
-                    }}
-                  >
-                    <strong>{l.nom}</strong>
-                    {resumeCompact && <span> — {resumeCompact}</span>}
-                    {reposTxt && <small className="meta"> · repos {reposTxt}</small>}
-                    {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
-                    {l.passe && !l.valide && <span className="puce alerte-muscle" style={{ marginLeft: '.35rem' }}>En attente</span>}
-                  </button>
-                  <button
-                    type="button"
-                    className="lien outil"
-                    title="Remplacer cet exercice (équivalents)"
-                    aria-label={`Remplacer ${l.nom}`}
-                    onClick={() => setChoix({ type: 'remplacer', index: i })}
-                  >
-                    ⇄
-                  </button>
-                  <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
-                </div>
-              </div>
-            )
-          }
-
-          return (
-            <div id={`exo-carte-${i}`} className={classes} key={i}>
-              {estFocusTerrain && (
-                <div className="bandeau-focus-terrain">
-                  <span>
-                    ⚡ <strong>Exercice {i + 1} / {lignes.length}</strong>
-                    {sup.etiquette ? ` · Superset ${sup.etiquette}` : ''}
-                  </span>
-                  <div className="ligne">
-                    <button type="button" className="secondaire btn-compact" onClick={() => passerExerciceTerrain(i)}>
-                      ⏭ Passer
-                    </button>
-                    <button type="button" className="btn-compact" onClick={() => validerTerrainEtAvancer(i)}>
-                      ✓ Fait & Suivant
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="exercice-entete">
-                {l.nom.trim() && (
-                  <button
-                    type="button"
-                    className={`btn-valide${l.valide ? ' actif' : ''}`}
-                    title="Marquer comme fait, lancer le repos et replier"
-                    aria-label="Marquer cet exercice comme fait et replier"
-                    onClick={() => (modeTerrain ? validerTerrainEtAvancer(i) : validerExerciceSimple(i))}
-                  >
-                    ✓
-                  </button>
-                )}
-                {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
-                <button
-                  type="button"
-                  className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
-                  onClick={() => setChoix({ type: 'remplacer', index: i })}
-                  aria-label={l.nom.trim() ? `Remplacer l'exercice : ${l.nom}` : 'Choisir un exercice'}
-                >
-                  <span>{l.nom.trim() || 'Choisir un exercice…'}</span>
-                  {l.nom.trim() && <span className="badge-swap-inline">⇄ Remplacer</span>}
-                </button>
-                <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
-              </div>
-
-              {alertesZones.length > 0 && (
-                <p className="alerte-zone" role="status">
-                  ⚠ Sollicite une zone sensible de {client.prenom} :{' '}
-                  <strong>{alertesZones.join(', ')}</strong>
-                  {' · '}
-                  <button
-                    type="button"
-                    className="lien"
-                    style={{ minHeight: 'auto', padding: '0 .25rem', textDecoration: 'underline' }}
-                    onClick={() => setChoix({ type: 'remplacer', index: i })}
-                  >
-                    Voir les alternatives adaptées →
-                  </button>
-                </p>
-              )}
-
-              {dernier && (
-                <div className="derniere-ligne">
-                  <DerniereFois d={dernier} temps={temps} />
-                  <div className="exercice-actions">
-                    <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Dernière fois</button>
-                    {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
-                  </div>
-                </div>
-              )}
-
-              {!cardio && (
-                <div className="bascule-mode" role="group" aria-label="Mesure de l'effort">
-                  <button
-                    type="button"
-                    className={`bascule-mode-bouton${!temps ? ' actif' : ''}`}
-                    aria-pressed={!temps}
-                    onClick={() => changerMode(i, 'reps')}
-                  >
-                    Répétitions
-                  </button>
-                  <button
-                    type="button"
-                    className={`bascule-mode-bouton${temps ? ' actif' : ''}`}
-                    aria-pressed={temps}
-                    onClick={() => changerMode(i, 'temps')}
-                  >
-                    Temps
-                  </button>
-                </div>
-              )}
-
-              {cardio ? (
-                <div className="compteurs">
-                  <Compteur
-                    libelle="Séries"
-                    valeur={l.series}
-                    onChange={v => maj(i, 'series', v)}
-                    pas={1}
-                    depart={dernier?.series ?? 3}
-                    erreur={verifier(l.series, REGLES.series)}
-                  />
-                  <Compteur
-                    libelle="Temps (sec)"
-                    valeur={l.duree_sec}
-                    onChange={v => maj(i, 'duree_sec', v)}
-                    pas={15}
-                    choixPas={PAS_SECONDES}
-                    depart={dernier?.duree_sec ?? 30}
-                    erreur={verifier(l.duree_sec, REGLES.duree_sec)}
-                  />
-                  <Compteur
-                    libelle="Distance (km)"
-                    valeur={l.distance_km}
-                    onChange={v => maj(i, 'distance_km', v)}
-                    pas={0.5}
-                    depart={dernier?.distance_km ?? 1}
-                    decimal
-                    erreur={verifier(l.distance_km, REGLES.distance)}
-                  />
-                </div>
-              ) : temps ? (
-                <div className="compteurs">
-                  <Compteur
-                    libelle="Séries"
-                    valeur={l.series}
-                    onChange={v => maj(i, 'series', v)}
-                    pas={1}
-                    depart={dernier?.series ?? 3}
-                    erreur={verifier(l.series, REGLES.series)}
-                  />
-                  <Compteur
-                    libelle="Durée (sec)"
-                    valeur={l.duree_sec}
-                    onChange={v => maj(i, 'duree_sec', v)}
-                    pas={5}
-                    choixPas={PAS_SECONDES}
-                    depart={dernier?.duree_sec ?? 30}
-                    erreur={verifier(l.duree_sec, REGLES.duree_sec)}
-                  />
-                  <Compteur
-                    libelle="Charge (kg)"
-                    valeur={l.charge_kg}
-                    onChange={v => maj(i, 'charge_kg', v)}
-                    pas={PAS_KG}
-                    choixPas={PAS_CHARGE}
-                    depart={dernier?.charge_kg ?? PAS_KG}
-                    decimal
-                    erreur={verifier(l.charge_kg, REGLES.charge)}
-                  />
-                </div>
-              ) : (
-                <div className="compteurs">
-                  <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
-                  <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
-                  <Compteur
-                    libelle="Charge (kg)"
-                    valeur={l.charge_kg}
-                    onChange={v => maj(i, 'charge_kg', v)}
-                    pas={PAS_KG}
-                    choixPas={PAS_CHARGE}
-                    depart={dernier?.charge_kg ?? PAS_KG}
-                    decimal
-                    erreur={verifier(l.charge_kg, REGLES.charge)}
-                  />
-                </div>
-              )}
-
-              <ChampRepos valeur={l.repos_sec} onChange={v => maj(i, 'repos_sec', v)} erreur={verifier(l.repos_sec, REGLES.duree_sec)} />
-
-              {afficherReglage ? (
-                <input
-                  className="champ-reglage"
-                  aria-label="Mémo de réglage pour cet exercice"
-                  placeholder="⚙ Mémo réglage client (ex. élastique rouge, poulie cran 4, prise neutre…)"
-                  value={l.reglage}
-                  onChange={e => maj(i, 'reglage', e.target.value)}
-                />
-              ) : null}
-
-              {fiche && <FicheExercice b={fiche} />}
-
-              <div className="exercice-pied">
-                {!afficherReglage && (
-                  <button type="button" className="lien superset-lien" onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}>
-                    + ⚙ Réglage
-                  </button>
-                )}
-                {i < lignes.length - 1 && (
-                  <button
-                    type="button"
-                    className={`lien superset-lien${l.lie_suivant ? ' actif' : ''}`}
-                    aria-pressed={l.lie_suivant}
-                    onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
-                  >
-                    {l.lie_suivant ? '⛓ Superset actif' : '+ Superset'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="lien superset-lien"
-                  title="Insérer un exercice juste en dessous"
-                  onClick={() => setChoix({ type: 'inserer_apres', index: i })}
-                >
-                  +↓ Insérer dessous
-                </button>
-                <div className="exercice-outils">
-                  {i > 0 && (
-                    <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
-                  )}
-                  {i < lignes.length - 1 && (
-                    <button type="button" className="lien outil" aria-label="Descendre cet exercice" title="Descendre" onClick={() => deplacer(i, 1)}>↓</button>
-                  )}
-                  {l.nom.trim() && (
-                    <button type="button" className="lien outil" aria-label="Dupliquer cet exercice" title="Dupliquer" onClick={() => dupliquer(i)}>⎘</button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-
-        <div className="ligne" style={{ flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => setChoix({ type: 'ajout_fin' })} style={{ flex: 2 }}>
-            + Ajouter des exercices
-          </button>
-          {modeleChargeId && (
-            <button type="button" className="secondaire" onClick={mettreAJourModeleCharge} style={{ flex: 1 }}>
-              Mettre à jour le modèle
-            </button>
-          )}
-          <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)} style={{ flex: 1 }}>
-            {modeleChargeId ? 'Nouveau modèle' : 'Créer un modèle'}
-          </button>
-        </div>
-
-        <h3>Ressentis & forme du jour (facultatif)</h3>
-        <div className="grille-ressentis">
-          <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
-          <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
-          <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
-          <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
-        </div>
-
-        <Champ libelle="Notes de séance (facultatif)">
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} />
-        </Champ>
-        <MessageErreur message={erreur} />
-        <div className="barre-enregistrement">
-          <span className="resume">
-            {saisis.length} exercice{saisis.length > 1 ? 's' : ''}
-            <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
-          </span>
-          <button type="submit" disabled={envoi || Boolean(invalide)}>
-            {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : 'Enregistrer la séance'}
-          </button>
-        </div>
-      </form>
-
-      {/* Barre de pilotage fixe du Mode Terrain sur Smartphone */}
-      {modeTerrain && lignes.length > 0 && (
-        <div className="barre-pilotage-terrain" role="region" aria-label="Pilotage Mode Terrain">
-          <div className="pilotage-terrain-entete">
-            <span className="pilotage-terrain-titre">
-              <span className="puce superset-badge">
-                {supTerrainCourant?.etiquette ?? `${indexTerrain + 1}/${lignes.length}`}
-              </span>
-              <strong>{ligneTerrainCourante?.nom.trim() || 'Exercice à choisir'}</strong>
+    <div className={modeTerrain ? 'terrain-plein-ecran' : undefined}>
+      {/* En-tête du Mode Terrain Plein Écran */}
+      {modeTerrain && (
+        <div className="terrain-barre-haut">
+          <div className="terrain-identite">
+            <strong>{client.prenom}</strong>
+            <span className="puce">
+              {nbTermines}/{saisis.length || lignes.length} fait{nbTermines > 1 ? 's' : ''}
             </span>
-            <div className="ligne" style={{ gap: '.35rem' }}>
-              {reposTerrainSec !== null && reposTerrainSec > 0 && (
-                <button
-                  type="button"
-                  className="secondaire pas-puce actif"
-                  title="Relancer le repos entre deux séries"
-                  onClick={() => lancerMinuteurRepos(reposTerrainSec)}
-                >
-                  ⏱ {libelleRepos(reposTerrainSec)}
-                </button>
-              )}
-              <span className="meta">
-                {nbTermines}/{saisis.length}
-              </span>
-            </div>
           </div>
-          <div className="pilotage-terrain-actions">
+          <div className="ligne">
             <button
               type="button"
-              className="btn-terrain-valider"
-              onClick={() => validerTerrainEtAvancer(indexTerrain)}
+              className={`btn-compact ${ecranFinTerrain ? '' : 'secondaire'}`}
+              onClick={() => setEcranFinTerrain(v => !v)}
             >
-              ✓ Fait & Suivant
+              🏁 {ecranFinTerrain ? 'Retour exos' : 'Bilan & Fin'}
             </button>
             <button
               type="button"
-              className="secondaire"
-              onClick={() => setChoix({ type: 'remplacer', index: indexTerrain })}
+              className="secondaire btn-compact"
+              onClick={() => setModeTerrain(false)}
             >
-              ⇄ Remplacer
+              ☰ Vue liste
             </button>
-            <button
-              type="button"
-              className="secondaire"
-              onClick={() => passerExerciceTerrain(indexTerrain)}
-            >
-              ⏭ Passer
-            </button>
-          </div>
-          <div className="pilotage-terrain-pastilles" role="tablist" aria-label="Navigation rapide exercices">
-            {lignes.map((l, idx) => (
-              <button
-                key={idx}
-                type="button"
-                className={[
-                  'pastille-exo',
-                  idx === indexTerrain ? 'actif' : '',
-                  l.valide ? 'fait' : l.passe ? 'passe' : '',
-                ].filter(Boolean).join(' ')}
-                onClick={() => {
-                  setIndexTerrain(idx)
-                  scrollerVersExercice(idx)
-                }}
-              >
-                {supTerrainCourant && supersets[idx]?.etiquette ? supersets[idx].etiquette : idx + 1}
-              </button>
-            ))}
           </div>
         </div>
       )}
+
+      {/* Le Chronomètre reste toujours monté au même endroit : il ne se réinitialise jamais */}
+      <Chronometre />
+
+      <form onSubmit={enregistrer} className={modeTerrain ? 'terrain-formulaire' : undefined}>
+        {modeTerrain ? (
+          <>
+            {/* Ruban horizontal des exercices en Mode Terrain */}
+            <div className="terrain-ruban" role="tablist" aria-label="Exercices de la séance">
+              {lignes.map((l, idx) => {
+                const sup = supersets[idx]
+                const actif = !ecranFinTerrain && idx === iTerrain
+                const nomCourt = l.nom.trim() ? l.nom.trim().slice(0, 18) + (l.nom.trim().length > 18 ? '…' : '') : 'À choisir'
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    role="tab"
+                    aria-selected={actif}
+                    className={[
+                      'terrain-onglet-exo',
+                      actif ? 'actif' : '',
+                      l.valide ? 'fait' : l.passe ? 'passe' : '',
+                      sup.groupe !== null ? `grp-sup-${sup.groupe}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={() => {
+                      setIndexTerrain(idx)
+                      setEcranFinTerrain(false)
+                    }}
+                  >
+                    <span className="terrain-onglet-num">
+                      {l.valide ? '✓' : l.passe ? '⏭' : sup.etiquette ?? idx + 1}
+                    </span>
+                    <span className="terrain-onglet-nom">{nomCourt}</span>
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                className="terrain-onglet-exo ajout"
+                onClick={() => setChoix({ type: 'ajout_fin' })}
+              >
+                + Ajouter
+              </button>
+            </div>
+
+            {/* Contenu principal : soit l'écran de Fin & Bilan, soit la carte complète de l'exercice actif */}
+            {ecranFinTerrain ? (
+              <div className="terrain-carte-active">
+                <div className="terrain-fin-entete">
+                  <h3>🏁 Fin de séance — {client.prenom}</h3>
+                  <p className="meta">
+                    {nbTermines} / {saisis.length} exercice(s) validé(s) · {nbSeries} série(s) au total
+                  </p>
+                </div>
+
+                <div className="champ">
+                  <span className="champ-libelle">Durée de la séance (min)</span>
+                  <div className="durees-rapides">
+                    {DUREES_RAPIDES.map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`puce-choix${duree === d ? ' actif' : ''}`}
+                        onClick={() => setDuree(duree === d ? '' : d)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                    <input
+                      className="duree-input"
+                      inputMode="numeric"
+                      placeholder="Autre"
+                      value={duree}
+                      onChange={e => setDuree(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grille-ressentis">
+                  <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
+                  <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
+                  <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
+                  <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+                </div>
+
+                <Champ libelle="Notes de séance (facultatif)">
+                  <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+                </Champ>
+
+                <MessageErreur message={erreur} />
+              </div>
+            ) : (
+              <div
+                className={[
+                  'terrain-carte-active',
+                  supTerrain?.groupe !== null ? `superset-groupe grp-sup-${supTerrain.groupe}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {/* Bandeau Superset pour basculer entre A1 et A2 en 1 tap */}
+                {partenairesSuperset.length > 0 && (
+                  <div className="terrain-bandeau-superset">
+                    <span>
+                      ⛓ <strong>Superset {supTerrain.etiquette}</strong>
+                    </span>
+                    <div className="puces" style={{ marginTop: 0 }}>
+                      {partenairesSuperset.map(p => (
+                        <button
+                          key={p.idx}
+                          type="button"
+                          className="puce-choix puce-compacte"
+                          onClick={() => setIndexTerrain(p.idx)}
+                        >
+                          Aller à {p.sup.etiquette} : {p.ligne.nom || 'Exercice'} →
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Titre de l'exercice + bouton Remplacer en 1 tap */}
+                <div className="terrain-exo-entete">
+                  <span className="terrain-badge-position">
+                    {supTerrain?.etiquette ?? `Exercice ${iTerrain + 1} / ${lignes.length}`}
+                  </span>
+                  {lTerrain.valide && <span className="puce" style={{ background: 'var(--succes)', color: '#fff' }}>✓ Terminé</span>}
+                  {lTerrain.passe && !lTerrain.valide && <span className="puce alerte-muscle">⏭ Mis de côté</span>}
+                </div>
+
+                <button
+                  type="button"
+                  className={`terrain-titre-bouton${lTerrain.nom.trim() ? '' : ' vide'}`}
+                  onClick={() => setChoix({ type: 'remplacer', index: iTerrain })}
+                >
+                  <span className="terrain-titre-nom">{lTerrain.nom.trim() || 'Choisir un exercice…'}</span>
+                  <span className="badge-swap-inline">⇄ {lTerrain.nom.trim() ? 'Remplacer' : 'Choisir'}</span>
+                </button>
+
+                { ficheTerrain && (ficheTerrain.groupe || ficheTerrain.materiel) && (
+                  <p className="meta" style={{ marginTop: '-.25rem' }}>
+                    {[ficheTerrain.groupe, ficheTerrain.materiel].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+
+                {alertesTerrain.length > 0 && (
+                  <p className="alerte-zone" role="status">
+                    ⚠ Sollicite une zone sensible de {client.prenom} :{' '}
+                    <strong>{alertesTerrain.join(', ')}</strong>
+                    {' · '}
+                    <button
+                      type="button"
+                      className="lien"
+                      style={{ minHeight: 'auto', padding: '0 .25rem', textDecoration: 'underline' }}
+                      onClick={() => setChoix({ type: 'remplacer', index: iTerrain })}
+                    >
+                      Alternatives →
+                    </button>
+                  </p>
+                )}
+
+                {dernierTerrain && (
+                  <div className="terrain-bloc-historique">
+                    <DerniereFois d={dernierTerrain} temps={tempsTerrain} />
+                    <div className="exercice-actions">
+                      <button type="button" className="secondaire" onClick={() => copierDerniere(iTerrain)}>
+                        ↺ Copier dernière
+                      </button>
+                      {propTerrain && (
+                        <button type="button" className="secondaire" onClick={() => progresser(iTerrain)}>
+                          ↑ Progresser
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!cardioTerrain && (
+                  <div className="bascule-mode" role="group" aria-label="Mesure de l'effort">
+                    <button
+                      type="button"
+                      className={`bascule-mode-bouton${!tempsTerrain ? ' actif' : ''}`}
+                      aria-pressed={!tempsTerrain}
+                      onClick={() => changerMode(iTerrain, 'reps')}
+                    >
+                      Répétitions
+                    </button>
+                    <button
+                      type="button"
+                      className={`bascule-mode-bouton${tempsTerrain ? ' actif' : ''}`}
+                      aria-pressed={tempsTerrain}
+                      onClick={() => changerMode(iTerrain, 'temps')}
+                    >
+                      Temps
+                    </button>
+                  </div>
+                )}
+
+                {/* Grands compteurs tactiles pour modifier facilement charges, séries et reps */}
+                {cardioTerrain ? (
+                  <div className="compteurs">
+                    <Compteur
+                      libelle="Séries"
+                      valeur={lTerrain.series}
+                      onChange={v => maj(iTerrain, 'series', v)}
+                      pas={1}
+                      depart={dernierTerrain?.series ?? 3}
+                      erreur={verifier(lTerrain.series, REGLES.series)}
+                    />
+                    <Compteur
+                      libelle="Temps (sec)"
+                      valeur={lTerrain.duree_sec}
+                      onChange={v => maj(iTerrain, 'duree_sec', v)}
+                      pas={15}
+                      choixPas={PAS_SECONDES}
+                      depart={dernierTerrain?.duree_sec ?? 30}
+                      erreur={verifier(lTerrain.duree_sec, REGLES.duree_sec)}
+                    />
+                    <Compteur
+                      libelle="Distance (km)"
+                      valeur={lTerrain.distance_km}
+                      onChange={v => maj(iTerrain, 'distance_km', v)}
+                      pas={0.5}
+                      depart={dernierTerrain?.distance_km ?? 1}
+                      decimal
+                      erreur={verifier(lTerrain.distance_km, REGLES.distance)}
+                    />
+                  </div>
+                ) : tempsTerrain ? (
+                  <div className="compteurs">
+                    <Compteur
+                      libelle="Séries"
+                      valeur={lTerrain.series}
+                      onChange={v => maj(iTerrain, 'series', v)}
+                      pas={1}
+                      depart={dernierTerrain?.series ?? 3}
+                      erreur={verifier(lTerrain.series, REGLES.series)}
+                    />
+                    <Compteur
+                      libelle="Durée (sec)"
+                      valeur={lTerrain.duree_sec}
+                      onChange={v => maj(iTerrain, 'duree_sec', v)}
+                      pas={5}
+                      choixPas={PAS_SECONDES}
+                      depart={dernierTerrain?.duree_sec ?? 30}
+                      erreur={verifier(lTerrain.duree_sec, REGLES.duree_sec)}
+                    />
+                    <Compteur
+                      libelle="Charge (kg)"
+                      valeur={lTerrain.charge_kg}
+                      onChange={v => maj(iTerrain, 'charge_kg', v)}
+                      pas={PAS_KG}
+                      choixPas={PAS_CHARGE}
+                      depart={dernierTerrain?.charge_kg ?? PAS_KG}
+                      decimal
+                      erreur={verifier(lTerrain.charge_kg, REGLES.charge)}
+                    />
+                  </div>
+                ) : (
+                  <div className="compteurs">
+                    <Compteur
+                      libelle="Séries"
+                      valeur={lTerrain.series}
+                      onChange={v => maj(iTerrain, 'series', v)}
+                      pas={1}
+                      depart={3}
+                      erreur={verifier(lTerrain.series, REGLES.series)}
+                    />
+                    <Compteur
+                      libelle="Répétitions"
+                      valeur={lTerrain.repetitions}
+                      onChange={v => maj(iTerrain, 'repetitions', v)}
+                      pas={1}
+                      depart={dernierTerrain?.repetitions ?? 10}
+                      erreur={verifier(lTerrain.repetitions, REGLES.repetitions)}
+                    />
+                    <Compteur
+                      libelle="Charge (kg)"
+                      valeur={lTerrain.charge_kg}
+                      onChange={v => maj(iTerrain, 'charge_kg', v)}
+                      pas={PAS_KG}
+                      choixPas={PAS_CHARGE}
+                      depart={dernierTerrain?.charge_kg ?? PAS_KG}
+                      decimal
+                      erreur={verifier(lTerrain.charge_kg, REGLES.charge)}
+                    />
+                  </div>
+                )}
+
+                <ChampRepos
+                  valeur={lTerrain.repos_sec}
+                  onChange={v => maj(iTerrain, 'repos_sec', v)}
+                  erreur={verifier(lTerrain.repos_sec, REGLES.duree_sec)}
+                />
+
+                {/* Mémo réglage toujours visible en Mode Terrain */}
+                <div className="champ">
+                  <span className="champ-libelle">⚙ Réglage matériel / mémo client</span>
+                  <input
+                    className="champ-reglage"
+                    aria-label="Mémo de réglage pour cet exercice"
+                    placeholder="Ex. élastique rouge, poulie cran 4, banc 30°…"
+                    value={lTerrain.reglage}
+                    onChange={e => maj(iTerrain, 'reglage', e.target.value)}
+                  />
+                </div>
+
+                {ficheTerrain && <FicheExercice b={ficheTerrain} />}
+
+                <div className="exercice-pied">
+                  {iTerrain < lignes.length - 1 && (
+                    <button
+                      type="button"
+                      className={`lien superset-lien${lTerrain.lie_suivant ? ' actif' : ''}`}
+                      onClick={() => maj(iTerrain, 'lie_suivant', !lTerrain.lie_suivant)}
+                    >
+                      {lTerrain.lie_suivant ? '⛓ Superset actif' : '+ Superset avec suivant'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="lien superset-lien"
+                    onClick={() => setChoix({ type: 'inserer_apres', index: iTerrain })}
+                  >
+                    +↓ Insérer un exo après
+                  </button>
+                  <div className="exercice-outils">
+                    {lTerrain.nom.trim() && (
+                      <button type="button" className="lien outil" title="Dupliquer" onClick={() => dupliquer(iTerrain)}>
+                        ⎘
+                      </button>
+                    )}
+                    <button type="button" className="lien danger outil" title="Supprimer cet exercice" onClick={() => retirer(iTerrain)}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Barre d'actions fixe en bas du Mode Terrain Plein Écran */}
+            <div className="terrain-barre-bas">
+              {ecranFinTerrain ? (
+                <>
+                  <button type="button" className="secondaire" onClick={() => setEcranFinTerrain(false)}>
+                    ← Retour aux exercices
+                  </button>
+                  <button type="submit" disabled={envoi || Boolean(invalide)} style={{ flex: 2 }}>
+                    {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : '✓ Enregistrer la séance'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="secondaire"
+                    onClick={() => passerExerciceTerrain(iTerrain)}
+                  >
+                    ⏭ Passer
+                  </button>
+                  <button
+                    type="button"
+                    className="secondaire"
+                    onClick={() => setChoix({ type: 'remplacer', index: iTerrain })}
+                  >
+                    ⇄ Remplacer
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-terrain-valider"
+                    onClick={() => validerTerrainEtAvancer(iTerrain)}
+                  >
+                    ✓ Fait & Suivant
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          /* ================= VUE LISTE CLASSIQUE (Préparation / Bureau) ================= */
+          <>
+            {brouillon && (
+              <div className="brouillon" role="status">
+                <p>
+                  <strong>Séance en cours retrouvée</strong>
+                  {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
+                </p>
+                <div className="ligne">
+                  <button type="button" onClick={reprendreBrouillon}>Reprendre</button>
+                  <button type="button" className="secondaire" onClick={abandonnerBrouillon}>Abandonner</button>
+                </div>
+              </div>
+            )}
+
+            <div className="entete-seance-rapide">
+              <Champ libelle="Date">
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              </Champ>
+              <div className="champ">
+                <span className="champ-libelle">Durée (min)</span>
+                <div className="durees-rapides">
+                  {DUREES_RAPIDES.map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`puce-choix${duree === d ? ' actif' : ''}`}
+                      aria-pressed={duree === d}
+                      onClick={() => setDuree(duree === d ? '' : d)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                  <input
+                    className="duree-input"
+                    inputMode="numeric"
+                    placeholder="Autre"
+                    aria-label="Durée personnalisée en minutes"
+                    value={duree}
+                    onChange={e => setDuree(e.target.value)}
+                  />
+                </div>
+                {verifier(duree, REGLES.duree) && <span className="champ-erreur" role="alert">{verifier(duree, REGLES.duree)}</span>}
+              </div>
+            </div>
+
+            {!seanceId && autres.length > 0 && (
+              <div className="participants">
+                <span className="champ-libelle">Séance partagée avec</span>
+                {puces.length > 0 && (
+                  <div className="puces">
+                    {puces.map(c => (
+                      <button key={c.id} type="button" className={`puce-choix${invites.includes(c.id) ? ' actif' : ''}`} aria-pressed={invites.includes(c.id)} onClick={() => basculerInvite(c.id)}>
+                        {invites.includes(c.id) ? '✓ ' : '+ '}{c.prenom}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <select aria-label="Ajouter un autre client à la séance" value="" onChange={e => e.target.value && setInvites(l => [...l, e.target.value])}>
+                  <option value="">Ajouter un autre client…</option>
+                  {autres.filter(c => !puces.some(p => p.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+                </select>
+                {invites.length > 0 && (
+                  <>
+                    <p className="meta">La séance sera enregistrée pour chaque participant, avec les mêmes exercices, et ne comptera que pour une séance en facturation.</p>
+                    <label className="case">
+                      <input type="checkbox" checked={copierCharges} onChange={e => setCopierCharges(e.target.checked)} />
+                      Copier aussi les charges et réglages (sinon à compléter dans leur profil)
+                    </label>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="entete-exercices-terrain">
+              <h3>Exercices</h3>
+              <div className="actions-entete-exos">
+                {peutToutProgresser && (
+                  <button
+                    type="button"
+                    className="secondaire btn-compact"
+                    title="Appliquer la progression automatique sur tous les exercices"
+                    onClick={progresserTouteLaSeance}
+                  >
+                    ↑ Tout progresser
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-compact"
+                  onClick={() => ouvrirModeTerrain()}
+                >
+                  ⚡ Mode Terrain plein écran
+                </button>
+              </div>
+            </div>
+
+            {!seanceId && (recentes.length > 0 || modeles.length > 0) && (
+              <div className="raccourcis-seance">
+                {recentes.length > 0 && (
+                  <div className="puces">
+                    <span className="meta">Reprendre :</span>
+                    {recentes.map((s, idx) => (
+                      <button key={s.id} type="button" className="puce-choix" onClick={() => reprendreSeance(s)}>
+                        ↺ {idx === 0 ? `Dernière (${courte(s.date_seance)})` : courte(s.date_seance)} ({s.exercices.length})
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {modelesFavoris.length > 0 && (
+                  <div className="puces">
+                    <span className="meta">★ Favoris :</span>
+                    {modelesFavoris.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={`puce-choix${modeleChargeId === m.id ? ' actif' : ''}`}
+                        onClick={() => appliquerModele(m.id)}
+                      >
+                        ★ {m.nom}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {modeles.length > 0 && (
+                  <select value={modeleChargeId ?? ''} onChange={e => appliquerModele(e.target.value)}>
+                    <option value="">Charger un modèle…</option>
+                    {modeles.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {modelesFavIds.has(m.id) ? `★ ${m.nom}` : m.nom}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {lignes.map((l, i) => {
+              const dernier = derniers[cle(l.nom)]
+              const fiche = biblio[cle(l.nom)]
+              const cardio = estCardio(l.nom)
+              const temps = estTemps(l)
+              const prop = dernier ? proposition(dernier, temps) : null
+              const sup = supersets[i]
+              const lieAvecSuivant = l.lie_suivant && i < lignes.length - 1
+
+              const classes = [
+                'exercice',
+                sup.groupe !== null ? `superset-groupe grp-sup-${sup.groupe}` : '',
+                lieAvecSuivant ? 'lie-suivant' : '',
+              ].filter(Boolean).join(' ')
+
+              const alertesZones = l.nom.trim()
+                ? zonesSensiblesSollicitees(
+                    { nom: l.nom, groupe: fiche?.groupe, muscles: fiche?.exercice_muscles ?? [] },
+                    zonesSensibles,
+                  )
+                : []
+              const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
+
+              const resumeCompact = temps
+                ? [
+                    resumeCardio({ series: num(l.series), duree_sec: num(l.duree_sec), distance_km: num(l.distance_km) }),
+                    l.charge_kg ? `@ ${l.charge_kg} kg` : '',
+                  ].filter(Boolean).join(' ')
+                : [l.series && l.repetitions ? `${l.series}×${l.repetitions}` : '', l.charge_kg ? `@ ${l.charge_kg} kg` : '']
+                    .filter(Boolean)
+                    .join(' ')
+              const reposTxt = libelleRepos(num(l.repos_sec))
+
+              if (l.valide && l.nom.trim()) {
+                return (
+                  <div className={`${classes} compact`} key={i}>
+                    <div className="exercice-entete">
+                      <button
+                        type="button"
+                        className="btn-valide actif"
+                        aria-label="Déplier cet exercice"
+                        onClick={() => maj(i, 'valide', false)}
+                      >
+                        ✓
+                      </button>
+                      {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
+                      <button
+                        type="button"
+                        className="exercice-compact-texte"
+                        onClick={() => maj(i, 'valide', false)}
+                      >
+                        <strong>{l.nom}</strong>
+                        {resumeCompact && <span> — {resumeCompact}</span>}
+                        {reposTxt && <small className="meta"> · repos {reposTxt}</small>}
+                        {l.reglage.trim() && <small className="meta"> · ⚙ {l.reglage}</small>}
+                      </button>
+                      <button
+                        type="button"
+                        className="lien outil"
+                        title="Ouvrir en Mode Terrain"
+                        onClick={() => ouvrirModeTerrain(i)}
+                      >
+                        ⚡
+                      </button>
+                      <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div className={classes} key={i}>
+                  <div className="exercice-entete">
+                    {l.nom.trim() && (
+                      <button
+                        type="button"
+                        className="btn-valide"
+                        title="Marquer comme fait, lancer le repos et replier"
+                        aria-label="Marquer cet exercice comme fait et replier"
+                        onClick={() => validerExerciceSimple(i)}
+                      >
+                        ✓
+                      </button>
+                    )}
+                    {sup.etiquette && <span className="puce superset-badge">{sup.etiquette}</span>}
+                    <button
+                      type="button"
+                      className={`exercice-nom${l.nom.trim() ? '' : ' vide'}`}
+                      onClick={() => setChoix({ type: 'remplacer', index: i })}
+                      aria-label={l.nom.trim() ? `Remplacer l'exercice : ${l.nom}` : 'Choisir un exercice'}
+                    >
+                      <span>{l.nom.trim() || 'Choisir un exercice…'}</span>
+                      {l.nom.trim() && <span className="badge-swap-inline">⇄ Remplacer</span>}
+                    </button>
+                    {l.nom.trim() && (
+                      <button
+                        type="button"
+                        className="lien outil"
+                        title="Ouvrir cet exercice en Mode Terrain plein écran"
+                        onClick={() => ouvrirModeTerrain(i)}
+                      >
+                        ⚡
+                      </button>
+                    )}
+                    <button type="button" className="lien danger outil" aria-label="Retirer cet exercice" onClick={() => retirer(i)}>✕</button>
+                  </div>
+
+                  {alertesZones.length > 0 && (
+                    <p className="alerte-zone" role="status">
+                      ⚠ Sollicite une zone sensible de {client.prenom} :{' '}
+                      <strong>{alertesZones.join(', ')}</strong>
+                      {' · '}
+                      <button
+                        type="button"
+                        className="lien"
+                        style={{ minHeight: 'auto', padding: '0 .25rem', textDecoration: 'underline' }}
+                        onClick={() => setChoix({ type: 'remplacer', index: i })}
+                      >
+                        Voir les alternatives adaptées →
+                      </button>
+                    </p>
+                  )}
+
+                  {dernier && (
+                    <div className="derniere-ligne">
+                      <DerniereFois d={dernier} temps={temps} />
+                      <div className="exercice-actions">
+                        <button type="button" className="secondaire" onClick={() => copierDerniere(i)}>↺ Dernière fois</button>
+                        {prop && <button type="button" className="secondaire" onClick={() => progresser(i)}>↑ Progresser</button>}
+                      </div>
+                    </div>
+                  )}
+
+                  {!cardio && (
+                    <div className="bascule-mode" role="group" aria-label="Mesure de l'effort">
+                      <button
+                        type="button"
+                        className={`bascule-mode-bouton${!temps ? ' actif' : ''}`}
+                        aria-pressed={!temps}
+                        onClick={() => changerMode(i, 'reps')}
+                      >
+                        Répétitions
+                      </button>
+                      <button
+                        type="button"
+                        className={`bascule-mode-bouton${temps ? ' actif' : ''}`}
+                        aria-pressed={temps}
+                        onClick={() => changerMode(i, 'temps')}
+                      >
+                        Temps
+                      </button>
+                    </div>
+                  )}
+
+                  {cardio ? (
+                    <div className="compteurs">
+                      <Compteur
+                        libelle="Séries"
+                        valeur={l.series}
+                        onChange={v => maj(i, 'series', v)}
+                        pas={1}
+                        depart={dernier?.series ?? 3}
+                        erreur={verifier(l.series, REGLES.series)}
+                      />
+                      <Compteur
+                        libelle="Temps (sec)"
+                        valeur={l.duree_sec}
+                        onChange={v => maj(i, 'duree_sec', v)}
+                        pas={15}
+                        choixPas={PAS_SECONDES}
+                        depart={dernier?.duree_sec ?? 30}
+                        erreur={verifier(l.duree_sec, REGLES.duree_sec)}
+                      />
+                      <Compteur
+                        libelle="Distance (km)"
+                        valeur={l.distance_km}
+                        onChange={v => maj(i, 'distance_km', v)}
+                        pas={0.5}
+                        depart={dernier?.distance_km ?? 1}
+                        decimal
+                        erreur={verifier(l.distance_km, REGLES.distance)}
+                      />
+                    </div>
+                  ) : temps ? (
+                    <div className="compteurs">
+                      <Compteur
+                        libelle="Séries"
+                        valeur={l.series}
+                        onChange={v => maj(i, 'series', v)}
+                        pas={1}
+                        depart={dernier?.series ?? 3}
+                        erreur={verifier(l.series, REGLES.series)}
+                      />
+                      <Compteur
+                        libelle="Durée (sec)"
+                        valeur={l.duree_sec}
+                        onChange={v => maj(i, 'duree_sec', v)}
+                        pas={5}
+                        choixPas={PAS_SECONDES}
+                        depart={dernier?.duree_sec ?? 30}
+                        erreur={verifier(l.duree_sec, REGLES.duree_sec)}
+                      />
+                      <Compteur
+                        libelle="Charge (kg)"
+                        valeur={l.charge_kg}
+                        onChange={v => maj(i, 'charge_kg', v)}
+                        pas={PAS_KG}
+                        choixPas={PAS_CHARGE}
+                        depart={dernier?.charge_kg ?? PAS_KG}
+                        decimal
+                        erreur={verifier(l.charge_kg, REGLES.charge)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="compteurs">
+                      <Compteur libelle="Séries" valeur={l.series} onChange={v => maj(i, 'series', v)} pas={1} depart={3} erreur={verifier(l.series, REGLES.series)} />
+                      <Compteur libelle="Répétitions" valeur={l.repetitions} onChange={v => maj(i, 'repetitions', v)} pas={1} depart={dernier?.repetitions ?? 10} erreur={verifier(l.repetitions, REGLES.repetitions)} />
+                      <Compteur
+                        libelle="Charge (kg)"
+                        valeur={l.charge_kg}
+                        onChange={v => maj(i, 'charge_kg', v)}
+                        pas={PAS_KG}
+                        choixPas={PAS_CHARGE}
+                        depart={dernier?.charge_kg ?? PAS_KG}
+                        decimal
+                        erreur={verifier(l.charge_kg, REGLES.charge)}
+                      />
+                    </div>
+                  )}
+
+                  <ChampRepos valeur={l.repos_sec} onChange={v => maj(i, 'repos_sec', v)} erreur={verifier(l.repos_sec, REGLES.duree_sec)} />
+
+                  {afficherReglage ? (
+                    <input
+                      className="champ-reglage"
+                      aria-label="Mémo de réglage pour cet exercice"
+                      placeholder="⚙ Mémo réglage client (ex. élastique rouge, poulie cran 4, prise neutre…)"
+                      value={l.reglage}
+                      onChange={e => maj(i, 'reglage', e.target.value)}
+                    />
+                  ) : null}
+
+                  {fiche && <FicheExercice b={fiche} />}
+
+                  <div className="exercice-pied">
+                    {!afficherReglage && (
+                      <button type="button" className="lien superset-lien" onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}>
+                        + ⚙ Réglage
+                      </button>
+                    )}
+                    {i < lignes.length - 1 && (
+                      <button
+                        type="button"
+                        className={`lien superset-lien${l.lie_suivant ? ' actif' : ''}`}
+                        aria-pressed={l.lie_suivant}
+                        onClick={() => maj(i, 'lie_suivant', !l.lie_suivant)}
+                      >
+                        {l.lie_suivant ? '⛓ Superset actif' : '+ Superset'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="lien superset-lien"
+                      title="Insérer un exercice juste en dessous"
+                      onClick={() => setChoix({ type: 'inserer_apres', index: i })}
+                    >
+                      +↓ Insérer dessous
+                    </button>
+                    <div className="exercice-outils">
+                      {i > 0 && (
+                        <button type="button" className="lien outil" aria-label="Monter cet exercice" title="Monter" onClick={() => deplacer(i, -1)}>↑</button>
+                      )}
+                      {i < lignes.length - 1 && (
+                        <button type="button" className="lien outil" aria-label="Descendre cet exercice" title="Descendre" onClick={() => deplacer(i, 1)}>↓</button>
+                      )}
+                      {l.nom.trim() && (
+                        <button type="button" className="lien outil" aria-label="Dupliquer cet exercice" title="Dupliquer" onClick={() => dupliquer(i)}>⎘</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            <div className="ligne" style={{ flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setChoix({ type: 'ajout_fin' })} style={{ flex: 2 }}>
+                + Ajouter des exercices
+              </button>
+              {modeleChargeId && (
+                <button type="button" className="secondaire" onClick={mettreAJourModeleCharge} style={{ flex: 1 }}>
+                  Mettre à jour le modèle
+                </button>
+              )}
+              <button type="button" className="secondaire" onClick={() => setFeuilleModele(true)} style={{ flex: 1 }}>
+                {modeleChargeId ? 'Nouveau modèle' : 'Créer un modèle'}
+              </button>
+            </div>
+
+            <h3>Ressentis & forme du jour (facultatif)</h3>
+            <div className="grille-ressentis">
+              <NoteSur10 libelle="Difficulté musculaire" valeur={diffMuscu} onChange={setDiffMuscu} />
+              <NoteSur10 libelle="Difficulté cardio" valeur={diffCardio} onChange={setDiffCardio} />
+              <NoteSur10 libelle="Fatigue" valeur={fatigue} onChange={setFatigue} />
+              <NoteSur10 libelle="Qualité du sommeil" valeur={sommeil} onChange={setSommeil} inverse />
+            </div>
+
+            <Champ libelle="Notes de séance (facultatif)">
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} />
+            </Champ>
+            <MessageErreur message={erreur} />
+            <div className="barre-enregistrement">
+              <span className="resume">
+                {saisis.length} exercice{saisis.length > 1 ? 's' : ''}
+                <small>{nbSeries} série{nbSeries > 1 ? 's' : ''}</small>
+              </span>
+              <button type="submit" disabled={envoi || Boolean(invalide)}>
+                {envoi ? 'Enregistrement…' : seanceId ? 'Enregistrer' : 'Enregistrer la séance'}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
 
       {choix !== null && (
         <SelecteurExercice
@@ -1518,6 +1856,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           }}
         />
       )}
-    </>
+    </div>
   )
 }

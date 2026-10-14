@@ -104,7 +104,7 @@ button.lien.danger:hover { background: color-mix(in srgb, var(--danger) 12%, tra
 .etat-vide strong { font-family: var(--titre); font-size: 1.25rem; font-weight: 600; }
 .etat-vide p { max-width: 26rem; color: var(--discret); }
 .etat-vide button { margin-top: .5rem; }
-.notifications { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(5.5rem + env(safe-area-inset-bottom)); z-index: 25; width: min(calc(100% - 1.5rem), 36rem); display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
+.notifications { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(5.5rem + env(safe-area-inset-bottom)); z-index: 28; width: min(calc(100% - 1.5rem), 36rem); display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
 .notification { pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .6rem .55rem 1rem; background: var(--encre); color: var(--fond); border-radius: 14px; box-shadow: var(--ombre); animation: monter .25s ease-out; }
 .notification .lien { color: var(--accent-doux); font-weight: 700; }
 @keyframes monter { from { opacity: 0; transform: translateY(8px); } }
@@ -218,7 +218,7 @@ h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
 .raccourcis-seance { display: flex; flex-direction: column; gap: .6rem; }
 
 .exercice-entete { display: flex; align-items: center; gap: .45rem; }
-.exercice-nom { flex: 1; min-width: 0; justify-content: flex-start; min-height: 3.1rem; padding: .45rem .85rem; font-size: 1rem; font-weight: 700; text-align: left; color: var(--encre); background: var(--fond); border: 1.5px solid var(--bord); box-shadow: none; }
+.exercice-nom { flex: 1; min-width: 0; justify-content: space-between; gap: .5rem; min-height: 3.1rem; padding: .45rem .85rem; font-size: 1rem; font-weight: 700; text-align: left; color: var(--encre); background: var(--fond); border: 1.5px solid var(--bord); box-shadow: none; }
 .exercice-nom:hover { background: var(--accent-doux); }
 .exercice-nom.vide { font-weight: 500; color: var(--discret); }
 .exercice-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -237,6 +237,7 @@ h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
 
 .btn-valide { flex: none; width: 2.45rem; min-height: 2.45rem; padding: 0; border-radius: 50%; font-size: 1.05rem; color: var(--accent-fonce); background: var(--accent-doux); border: 1.5px solid var(--bord); box-shadow: none; }
 .btn-valide.actif { color: var(--sur-accent); background: var(--succes); border-color: var(--succes); }
+.btn-valide.passe { background: var(--alerte-fond); color: var(--alerte-texte); border-color: var(--alerte-texte); }
 .exercice.compact { padding: .55rem .8rem; }
 .exercice-compact-texte { flex: 1; min-width: 0; justify-content: flex-start; min-height: 2.4rem; padding: .2rem .35rem; text-align: left; font-weight: 500; color: var(--encre); background: none; box-shadow: none; }
 .exercice-compact-texte:hover { background: var(--accent-doux); }
@@ -708,7 +709,7 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
 }
 
 /* ==========================================================
-   PHASE 5 : Mode Terrain, Remplacement Intelligent & Éditeur de Modèles
+   PHASE 5 : Mode Terrain Plein Écran, Remplacement & Modèles
    ========================================================== */
 .entete-exercices-terrain {
   display: flex;
@@ -727,124 +728,240 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
   flex-wrap: wrap;
 }
 
-.exercice-nom {
-  justify-content: space-between;
-  gap: .5rem;
-}
 .badge-swap-inline {
   font-size: .78rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent-fonce);
   background: var(--accent-doux);
-  padding: .15rem .5rem;
+  padding: .2rem .6rem;
   border-radius: 999px;
   white-space: nowrap;
 }
 
-.exercice.focus-terrain {
-  border: 2px solid var(--accent);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 18%, transparent);
+/* Conteneur Plein Écran du Mode Terrain */
+.terrain-plein-ecran {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  background: var(--fond);
+  display: flex;
+  flex-direction: column;
+  padding: calc(.5rem + env(safe-area-inset-top)) .85rem calc(5.4rem + env(safe-area-inset-bottom));
+  overflow-y: auto;
 }
-.bandeau-focus-terrain {
+.terrain-plein-ecran > * {
+  width: min(100%, 42rem);
+  margin-inline: auto;
+}
+.terrain-plein-ecran .chrono-barre {
+  top: 0;
+  margin-bottom: .5rem;
+}
+
+.terrain-barre-haut {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: .5rem;
-  flex-wrap: wrap;
-  padding-bottom: .5rem;
+  padding-bottom: .55rem;
+  margin-bottom: .45rem;
   border-bottom: 1px solid var(--trait);
-  font-size: .88rem;
-  color: var(--accent-fonce);
 }
-.btn-valide.passe {
-  background: var(--alerte-fond);
-  color: var(--alerte-texte);
-  border-color: var(--alerte-texte);
+.terrain-identite {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-family: var(--titre);
+  font-size: 1.2rem;
 }
 
-/* Barre de pilotage fixe du Mode Terrain (Smartphone) */
-.avec-barre-terrain {
-  padding-bottom: 9.5rem;
+.terrain-formulaire {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
 }
-.barre-pilotage-terrain {
+
+/* Ruban horizontal de navigation entre les exercices */
+.terrain-ruban {
+  display: flex;
+  gap: .4rem;
+  overflow-x: auto;
+  padding: .15rem 0 .35rem;
+  scrollbar-width: none;
+}
+.terrain-ruban::-webkit-scrollbar {
+  display: none;
+}
+.terrain-onglet-exo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 2.35rem;
+  padding: .25rem .7rem;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--encre);
+  background: var(--surface);
+  border: 1.5px solid var(--bord);
+  border-radius: 999px;
+  box-shadow: none;
+}
+.terrain-onglet-exo.actif {
+  border-color: var(--accent);
+  background: var(--accent-doux);
+  color: var(--accent-fonce);
+  font-weight: 700;
+}
+.terrain-onglet-exo.fait {
+  border-color: var(--succes);
+}
+.terrain-onglet-exo.fait .terrain-onglet-num {
+  background: var(--succes);
+  color: #fff;
+}
+.terrain-onglet-exo.passe {
+  border-color: var(--alerte-texte);
+  background: var(--alerte-fond);
+  color: var(--alerte-texte);
+}
+.terrain-onglet-exo.ajout {
+  border-style: dashed;
+  color: var(--accent-fonce);
+}
+.terrain-onglet-num {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  padding: 0 .3rem;
+  font-size: .74rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: var(--sup, var(--trait));
+  color: var(--sup-on, var(--encre));
+}
+.terrain-onglet-nom {
+  white-space: nowrap;
+}
+
+/* Carte principale de l'exercice actif en plein écran */
+.terrain-carte-active {
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+  padding: 1.1rem;
+  background: var(--surface);
+  border: 1.5px solid var(--bord);
+  border-radius: 22px;
+  box-shadow: var(--ombre);
+}
+.terrain-carte-active.superset-groupe {
+  border-left: 5px solid var(--sup);
+}
+
+.terrain-bandeau-superset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .4rem;
+  padding: .5rem .75rem;
+  background: color-mix(in srgb, var(--sup, var(--accent)) 12%, var(--fond));
+  border-radius: 12px;
+  font-size: .85rem;
+}
+
+.terrain-exo-entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.terrain-badge-position {
+  font-size: .8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--accent-fonce);
+}
+
+.terrain-titre-bouton {
+  width: 100%;
+  min-height: 3.5rem;
+  padding: .65rem 1rem;
+  justify-content: space-between;
+  gap: .75rem;
+  text-align: left;
+  background: var(--fond);
+  color: var(--encre);
+  border: 1.5px solid var(--bord);
+  border-radius: 16px;
+  box-shadow: none;
+}
+.terrain-titre-bouton:hover {
+  background: var(--accent-doux);
+  border-color: var(--accent);
+}
+.terrain-titre-nom {
+  font-family: var(--titre);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.terrain-titre-bouton.vide .terrain-titre-nom {
+  color: var(--discret);
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.terrain-bloc-historique {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .65rem .85rem;
+  background: var(--fond);
+  border-radius: 14px;
+}
+
+.terrain-fin-entete h3 {
+  margin: 0 0 .25rem;
+  font-family: var(--titre);
+  font-size: 1.35rem;
+}
+
+/* Barre d'actions fixe en bas de l'écran en Mode Terrain */
+.terrain-barre-bas {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(4.6rem + env(safe-area-inset-bottom));
-  z-index: 22;
-  width: min(calc(100% - 1rem), 40rem);
+  bottom: calc(.5rem + env(safe-area-inset-bottom));
+  z-index: 23;
+  width: min(calc(100% - 1.2rem), 42rem);
   display: flex;
-  flex-direction: column;
   gap: .45rem;
-  padding: .65rem .8rem;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  padding: .5rem;
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--bord);
   border-radius: 20px;
   box-shadow: var(--ombre);
 }
-.pilotage-terrain-entete {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
+.terrain-barre-bas button {
+  flex: 1;
+  min-height: 3.2rem;
+  padding: .4rem .6rem;
+  font-size: .92rem;
+  border-radius: 14px;
 }
-.pilotage-terrain-titre {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pilotage-terrain-actions {
-  display: grid;
-  grid-template-columns: 1.35fr 1fr .8fr;
-  gap: .4rem;
-}
-.pilotage-terrain-actions button {
-  min-height: 2.65rem;
-  padding: .35rem .5rem;
-  font-size: .86rem;
-  border-radius: 12px;
-}
-.btn-terrain-valider {
+.terrain-barre-bas .btn-terrain-valider {
+  flex: 1.5;
   background: var(--succes);
   color: #fff;
-}
-.pilotage-terrain-pastilles {
-  display: flex;
-  gap: .3rem;
-  overflow-x: auto;
-  padding-top: .15rem;
-}
-.pastille-exo {
-  min-width: 2rem;
-  min-height: 1.85rem;
-  padding: 0 .45rem;
-  font-size: .76rem;
-  font-weight: 700;
-  border-radius: 8px;
-  background: var(--fond);
-  color: var(--discret);
-  border: 1px solid var(--bord);
-  box-shadow: none;
-}
-.pastille-exo.actif {
-  border: 2px solid var(--accent);
-  color: var(--encre);
-}
-.pastille-exo.fait {
-  background: var(--succes);
-  color: #fff;
-  border-color: var(--succes);
-}
-.pastille-exo.passe {
-  background: var(--alerte-fond);
-  color: var(--alerte-texte);
-  border-color: var(--alerte-texte);
 }
 
 /* Sélecteur d'exercice enrichi (4 vues + favoris + filtres matériel) */
