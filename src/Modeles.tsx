@@ -178,12 +178,24 @@ export default function Modeles() {
       const copie = [...l]
       const [elem] = copie.splice(i, 1)
       copie.splice(cible, 0, elem)
+      if (copie.length > 0 && copie[copie.length - 1].lie_suivant) {
+        copie[copie.length - 1] = { ...copie[copie.length - 1], lie_suivant: false }
+      }
       return copie
     })
   }
 
   function retirerLigne(i: number) {
-    setLignesEdition(l => l.filter((_, j) => j !== i))
+    setLignesEdition(l => {
+      const copie = l.filter((_, j) => j !== i)
+      if (!l[i].lie_suivant && i > 0 && l[i - 1].lie_suivant) {
+        copie[i - 1] = { ...copie[i - 1], lie_suivant: false }
+      }
+      if (copie.length > 0 && copie[copie.length - 1].lie_suivant) {
+        copie[copie.length - 1] = { ...copie[copie.length - 1], lie_suivant: false }
+      }
+      return copie
+    })
   }
 
   const invalide =

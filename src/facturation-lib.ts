@@ -75,7 +75,7 @@ export function formats(e: Entite) {
 export const detailFormats = (e: Entite) => formats(e).map(f => `${f.compte} ${f.texte}`).join(' · ')
 
 /* ---------- Compteur affiché dans le profil et après l'enregistrement d'une séance ---------- */
-// Nombre de séances du mois pour ce client ; s'il est facturé en groupe, on compte celles du groupe (une séance partagée = 1).
+// Nombre de séances du mois pour ce client (y compris séances partagées avec son groupe) ; ne compte pas les solos du partenaire.
 export async function resumeMois(
   client: { id: string; prenom: string; groupe_facturation: string | null },
   mois = moisCourant(),
@@ -91,7 +91,7 @@ export async function resumeMois(
   const { data, error } = await supabase
     .from('seances')
     .select('id, session_id')
-    .in('client_id', membres.map(m => m.id))
+    .eq('client_id', client.id)
     .gte('date_seance', debut)
     .lt('date_seance', fin)
   if (error) return null

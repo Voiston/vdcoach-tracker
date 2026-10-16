@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   calculerBilan,
   construireBilan,
+  selectionnerCourbesExercices,
   type SeanceCharges,
   type MesureBilan,
 } from './bilan-lib'
@@ -274,6 +275,109 @@ describe('bilan-lib.ts', () => {
       expect(texte).not.toContain('Records')
       expect(texte).not.toContain('Mesures')
       expect(texte).not.toContain('Objectifs')
+    })
+  })
+
+  describe('selectionnerCourbesExercices', () => {
+    it('filtre les charges nulles, négatives et égales à 0 kg', () => {
+      const seances: SeanceCharges[] = [
+        {
+          date_seance: '2025-05-05',
+          exercices: [
+            { nom: 'Planche', charge_kg: 0 },
+            { nom: 'Gainage', charge_kg: null },
+            { nom: 'Pompes', charge_kg: -5 },
+            { nom: 'Squat', charge_kg: 60 },
+          ],
+        },
+        {
+          date_seance: '2025-05-12',
+          exercices: [
+            { nom: 'Planche', charge_kg: 0 },
+            { nom: 'Squat', charge_kg: 65 },
+          ],
+        },
+      ]
+
+      const res = selectionnerCourbesExercices(seances, mois)
+      expect(res).toHaveLength(1)
+      expect(res[0].nom).toBe('Squat')
+      expect(res[0].points).toEqual([
+        { date: '2025-05-05', valeur: 60, record: false },
+        { date: '2025-05-12', valeur: 65, record: true },
+      ])
+    })
+
+    it('regroupe les variantes de casse et espaces sous une même courbe', () => {
+      const seances: SeanceCharges[] = [
+        {
+          date_seance: '2025-04-10',
+          exercices: [{ nom: 'Développé Couché', charge_kg: 70 }],
+        },
+        {
+          date_seance: '2025-05-08',
+          exercices: [{ nom: '  développé couché ', charge_kg: 75 }],
+        },
+        {
+          date_seance: '2025-05-22',
+          exercices: [{ nom: 'DÉVELOPPÉ COUCHÉ', charge_kg: 80 }],
+        },
+      ]
+
+      const res = selectionnerCourbesExercices(seances, mois)
+      expect(res).toHaveLength(1)
+      expect(res[0].points).toHaveLength(3)
+      expect(res[0].points.map(p => p.valeur)).toEqual([70, 75, 80])
+      expect(res[0].points.map(p => p.record)).toEqual([false, true, true])
+    })
+
+    it('exclut les exercices avec moins de 2 séances avec charge positive', () => {
+      const seances: SeanceCharges[] = [
+        {
+          date_seance: '2025-05-10',
+          exercices: [
+            { nom: 'Soulevé de terre', charge_kg: 100 },
+            { nom: 'Curl biceps', charge_kg: 14 },
+          ],
+        },
+        {
+          date_seance: '2025-05-20',
+          exercices: [{ nom: 'Curl biceps', charge_kg: 16 }],
+        },
+      ]
+
+      const res = selectionnerCourbesExercices(seances, mois)
+      expect(res.map(c => c.nom)).toEqual(['Curl biceps'])
+    })
+
+    it('priorise les exercices pratiqués pendant le mois puis le nombre de séances', () => {
+      const seances: SeanceCharges[] = [
+        // Exercice A : 3 fois dans le passé, 0 fois ce mois-ci
+        { date_seance: '2025-03-01', exercices: [{ nom: 'Presse', charge_kg: 150 }] },
+        { date_seance: '2025-03-15', exercices: [{ nom: 'Presse', charge_kg: 160 }] },
+        { date_seance: '2025-03-30', exercices: [{ nom: 'Presse', charge_kg: 170 }] },
+
+        // Exercice B : 1 fois dans le passé, 2 fois ce mois-ci
+        { date_seance: '2025-04-15', exercices: [{ nom: 'Traction', charge_kg: 10 }] },
+        { date_seance: '2025-05-02', exercices: [{ nom: 'Traction', charge_kg: 12 }] },
+        { date_seance: '2025-05-16', exercices: [{ nom: 'Traction', charge_kg: 14 }] },
+      ]
+
+      const res = selectionnerCourbesExercices(seances, mois)
+      // Traction a freqMois = 2, Presse a freqMois = 0
+      expect(res[0].nom).toBe('Traction')
+      expect(res[1].nom).toBe('Presse')
+    })
+
+    it('ne prend pas en compte les séances postérieures au mois cible', () => {
+      const seances: SeanceCharges[] = [
+        { date_seance: '2025-05-05', exercices: [{ nom: 'Squat', charge_kg: 80 }] },
+        { date_seance: '2025-06-01', exercices: [{ nom: 'Squat', charge_kg: 90 }] }, // Hors mois
+      ]
+
+      const res = selectionnerCourbesExercices(seances, mois)
+      // Squat n'a qu'une seule séance jusqu'à fin mai 2025, donc il ne doit pas être retenu
+      expect(res).toHaveLength(0)
     })
   })
 })

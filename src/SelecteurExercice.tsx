@@ -71,7 +71,7 @@ export function basculerExoFavori(nom: string): Set<string> {
 export function detecterSchemaMoteur(nom: string, groupe?: string): SchemaMoteur {
   const txt = normaliser(`${nom} ${groupe ?? ''}`)
   if (normaliser(groupe ?? '') === 'mobilite' || /(mobilite|etirement|stretch|assouplissement|cat-cow|chat-vache|open book|livre ouvert)/.test(txt)) return 'mobilite'
-  if (normaliser(groupe ?? '') === 'cardio' || /(\bvelo\b|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping|skater|montee de genou)/.test(txt)) return 'cardio'
+  if (normaliser(groupe ?? '') === 'cardio' || /(\bvelo\b|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping|skater|montee de genou|jogging|footing)/.test(txt)) return 'cardio'
   if (/(fente|bulgare|step up|step-up|montee sur banc|pistol|unilateral|unipod|une jambe|1 jambe)/.test(txt)) return 'fente'
   if (/(squat|presse|goblet|leg extension|chaise|hack|sissy|wall sit|thruster)/.test(txt)) return 'squat'
   if (/(souleve|deadlift|rdl|roumain|hip thrust|pont fessier|glute bridge|good morning|swing|leg curl|ischio|extension lombaire|kettlebell swing)/.test(txt)) return 'charniere'

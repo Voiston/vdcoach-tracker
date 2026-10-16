@@ -97,3 +97,64 @@ export function construireBilan(e: { prenom: string; mois: string; seances: Sean
   }
   return blocs.join('\n\n')
 }
+
+export type Point = { date: string; valeur: number; record?: boolean }
+
+export function marquerRecords(points: Point[]): Point[] {
+  let max = -Infinity
+  return points.map((p, i) => {
+    const record = i > 0 && p.valeur > max
+    max = Math.max(max, p.valeur)
+    return { ...p, record }
+  })
+}
+
+export type CourbeExercice = {
+  nom: string
+  points: Point[]
+}
+
+// Sélectionne et classe les courbes d'exercices à proposer pour le PDF :
+// - Seuls les exercices avec charge strictement positive (> 0 kg) sont retenus
+// - Le regroupement est insensible à la casse et aux espaces superflus
+// - On privilégie les exercices pratiqués pendant le mois qui ont au moins 2 séances avec charge
+export function selectionnerCourbesExercices(seances: SeanceCharges[], mois: string): CourbeExercice[] {
+  const { debut, fin } = bornesMois(mois)
+  const seancesJusquaFin = seances.filter(x => x.date_seance < fin)
+  const frequenceMois = new Map<string, number>()
+  const exosParCle = new Map<string, string>()
+
+  for (const seance of seances.filter(x => x.date_seance >= debut && x.date_seance < fin)) {
+    for (const x of seance.exercices) {
+      if (x.charge_kg !== null && Number(x.charge_kg) > 0 && x.nom?.trim()) {
+        const c = x.nom.trim().toLowerCase()
+        frequenceMois.set(c, (frequenceMois.get(c) ?? 0) + 1)
+        if (!exosParCle.has(c)) exosParCle.set(c, x.nom.trim())
+      }
+    }
+  }
+
+  for (const seance of seancesJusquaFin) {
+    for (const x of seance.exercices) {
+      if (x.charge_kg !== null && Number(x.charge_kg) > 0 && x.nom?.trim()) {
+        const c = x.nom.trim().toLowerCase()
+        if (!exosParCle.has(c)) exosParCle.set(c, x.nom.trim())
+      }
+    }
+  }
+
+  const candidats = [...exosParCle.entries()]
+    .map(([cle, nom]) => {
+      const pts = seancesJusquaFin.flatMap(seance => {
+        const charges = seance.exercices
+          .filter(x => x.nom?.trim().toLowerCase() === cle && x.charge_kg !== null && Number(x.charge_kg) > 0)
+          .map(x => Number(x.charge_kg))
+        return charges.length ? [{ date: seance.date_seance, valeur: Math.max(...charges) }] : []
+      })
+      return { nom, points: marquerRecords(pts), freq: frequenceMois.get(cle) ?? 0 }
+    })
+    .filter(c => c.points.length >= 2)
+    .sort((x, y) => y.freq - x.freq || y.points.length - x.points.length || x.nom.localeCompare(y.nom))
+
+  return candidats.map(({ nom, points }) => ({ nom, points }))
+}

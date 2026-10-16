@@ -4,6 +4,7 @@ import NouvelleSeance from './NouvelleSeance'
 import { ClientCtx } from './ui'
 import type { Client } from './Clients'
 import { ecrireBrouillon } from './brouillon'
+import { supabase } from './supabase'
 
 // Mock supabase
 vi.mock('./supabase', () => {
@@ -281,4 +282,252 @@ describe('NouvelleSeance - Sauvegarde du brouillon et Mode Terrain ([P1-02])', (
     expect(sauvegarde).toContain('Nouvelle séance très productive')
     expect(screen.queryByText(/Séance en cours retrouvée/i)).not.toBeInTheDocument()
   })
+
+  it('sauvegarde automatiquement en Mode Terrain si un réglage est saisi avant même de choisir le nom de l’exercice', () => {
+    const clientId = 'client-test-123'
+    ecrireBrouillon({
+      clientId,
+      date: '2026-10-10',
+      duree: '60',
+      diff_muscu: '5',
+      diff_cardio: '',
+      fatigue: '',
+      sommeil: '',
+      notes: 'Ancien brouillon',
+      lignes: [{ nom: 'Presse à cuisses', series: '4', repetitions: '10', charge_kg: '150' }],
+    })
+
+    renduNouvelleSeance(clientId)
+
+    // Basculer en Mode Terrain
+    fireEvent.click(screen.getByText('⚡ Mode Terrain plein écran'))
+
+    // Saisie directe d'un réglage sur la ligne courante sans avoir choisi de nom d'exercice
+    const champReglage = screen.getByPlaceholderText(/élastique rouge/i)
+    fireEvent.change(champReglage, { target: { value: 'Élastique bleu' } })
+
+    act(() => {
+      vi.advanceTimersByTime(700)
+    })
+
+    const sauvegarde = localStorage.getItem(`vdcoach_brouillon_seance:${clientId}`)
+    expect(sauvegarde).not.toBeNull()
+    expect(sauvegarde).toContain('Élastique bleu')
+    expect(screen.queryByText(/Séance en cours retrouvée/i)).not.toBeInTheDocument()
+  })
+
+  it('synchronise la date et la durée de toutes les séances liées par session_id lors d’une modification ([P1-04])', async () => {
+    const clientId = 'client-test-123'
+    const seanceId = 'seance-alice-1'
+    const sessionId = 'session-commune-duo-789'
+
+    const updateCalls: Array<{ table: string; payload: any; filters: Record<string, any> }> = []
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      const obj: any = {}
+      let currentPayload: any = null
+      const currentFilters: Record<string, any> = {}
+
+      obj.select = vi.fn().mockReturnValue(obj)
+      obj.insert = vi.fn().mockReturnValue(obj)
+      obj.delete = vi.fn().mockReturnValue(obj)
+      obj.order = vi.fn().mockReturnValue(obj)
+      obj.limit = vi.fn().mockReturnValue(obj)
+      obj.single = vi.fn().mockImplementation(() => {
+        if (table === 'seances') {
+          return Promise.resolve({
+            data: {
+              client_id: clientId,
+              session_id: sessionId,
+              date_seance: '2026-10-10',
+              duree_min: 60,
+              diff_muscu: 6,
+              diff_cardio: null,
+              fatigue: null,
+              sommeil: null,
+              notes: 'Séance duo avec Bob',
+              exercices: [{ id: 'exo-1', ordre: 0, nom: 'Squat barre', series: 4, repetitions: 8, charge_kg: 80 }],
+            },
+            error: null,
+          })
+        }
+        return Promise.resolve({ data: null, error: null })
+      })
+
+      obj.update = vi.fn().mockImplementation((payload: any) => {
+        currentPayload = payload
+        return obj
+      })
+
+      obj.eq = vi.fn().mockImplementation((field: string, val: any) => {
+        currentFilters[field] = val
+        return obj
+      })
+
+      obj.neq = vi.fn().mockImplementation((field: string, val: any) => {
+        currentFilters[`neq_${field}`] = val
+        return obj
+      })
+
+      obj.in = vi.fn().mockReturnValue(obj)
+      obj.lte = vi.fn().mockReturnValue(obj)
+      obj.gte = vi.fn().mockReturnValue(obj)
+      obj.gt = vi.fn().mockReturnValue(obj)
+      obj.ilike = vi.fn().mockReturnValue(obj)
+
+      obj.then = (fn: (res: any) => void) => {
+        if (currentPayload) {
+          updateCalls.push({ table, payload: currentPayload, filters: { ...currentFilters } })
+        }
+        return Promise.resolve(fn({ data: [], error: null }))
+      }
+
+      return obj
+    })
+
+    const client = { ...clientMock, id: clientId }
+    await act(async () => {
+      render(
+        <ClientCtx.Provider value={{ client, recharger: vi.fn().mockResolvedValue(undefined) }}>
+          <NouvelleSeance seanceId={seanceId} onSaved={vi.fn()} />
+        </ClientCtx.Provider>,
+      )
+    })
+
+    // Modifier la date et la durée
+    const inputDate = screen.getByLabelText(/Date/i)
+    fireEvent.change(inputDate, { target: { value: '2026-10-18' } })
+
+    const inputDuree = screen.getByLabelText(/Durée personnalisée en minutes/i)
+    fireEvent.change(inputDuree, { target: { value: '75' } })
+
+    // Soumettre le formulaire
+    const btnEnregistrer = screen.getByRole('button', { name: /^Enregistrer$/i })
+    await act(async () => {
+      fireEvent.click(btnEnregistrer)
+    })
+
+    // Vérifier les appels d'update
+    // 1) Mise à jour de la séance courante
+    const updateLigneCourante = updateCalls.find(
+      c => c.table === 'seances' && c.filters.id === seanceId && c.payload.date_seance === '2026-10-18' && c.payload.duree_min === 75,
+    )
+    expect(updateLigneCourante).toBeDefined()
+
+    // 2) Mise à jour des séances partagées avec le même session_id
+    const updatePartagees = updateCalls.find(
+      c =>
+        c.table === 'seances' &&
+        c.filters.session_id === sessionId &&
+        c.filters.neq_id === seanceId &&
+        c.payload.date_seance === '2026-10-18' &&
+        c.payload.duree_min === 75,
+    )
+    expect(updatePartagees).toBeDefined()
+  })
+
+  it('n’affiche pas le bandeau de brouillon si le brouillon a expiré (> 7 jours)', () => {
+    const clientId = 'client-test-123'
+    const ilYa8Jours = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString()
+
+    localStorage.setItem(
+      `vdcoach_brouillon_seance:${clientId}`,
+      JSON.stringify({
+        clientId,
+        date: '2026-10-01',
+        duree: '60',
+        notes: 'Brouillon expiré depuis 8 jours',
+        lignes: [{ nom: 'Squat', series: '3', repetitions: '10', charge_kg: '60' }],
+        enregistreLe: ilYa8Jours,
+      }),
+    )
+
+    renduNouvelleSeance(clientId)
+
+    // Aucun bandeau de reprise de brouillon
+    expect(screen.queryByText(/Séance en cours retrouvée/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    // Le brouillon périmé a été automatiquement nettoyé du stockage
+    expect(localStorage.getItem(`vdcoach_brouillon_seance:${clientId}`)).toBeNull()
+  })
+
+  it('isolation par client : un brouillon enregistré pour un autre client n’apparaît pas', () => {
+    const clientIdCourant = 'client-test-123'
+    const autreClientId = 'client-autre-999'
+
+    ecrireBrouillon({
+      clientId: autreClientId,
+      date: '2026-10-15',
+      duree: '60',
+      notes: 'Brouillon privé d’un autre client',
+      lignes: [{ nom: 'Fentes', series: '3', repetitions: '10', charge_kg: '20' }],
+    })
+
+    renduNouvelleSeance(clientIdCourant)
+
+    expect(screen.queryByText(/Séance en cours retrouvée/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('permet de reprendre un brouillon existant en vue classique et restaure les valeurs', () => {
+    const clientId = 'client-test-123'
+    ecrireBrouillon({
+      clientId,
+      date: '2026-10-14',
+      duree: '45',
+      diff_muscu: '8',
+      diff_cardio: '',
+      fatigue: '',
+      sommeil: '',
+      notes: 'Notes restaurées du brouillon classique',
+      lignes: [{ nom: 'Squat barre', series: '3', repetitions: '10', charge_kg: '90' }],
+    })
+
+    renduNouvelleSeance(clientId)
+
+    // Bandeau visible en vue classique
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    const btnReprendre = screen.getByRole('button', { name: 'Reprendre' })
+    fireEvent.click(btnReprendre)
+
+    // Le bandeau disparaît
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    // Les données sont injectées dans les champs de la vue classique
+    const inputDate = screen.getByLabelText(/Date/i) as HTMLInputElement
+    expect(inputDate.value).toBe('2026-10-14')
+
+    const inputNotes = screen.getByLabelText(/Notes de séance/i) as HTMLTextAreaElement
+    expect(inputNotes.value).toBe('Notes restaurées du brouillon classique')
+
+    // L'exercice est affiché
+    expect(screen.getByText('Squat barre')).toBeInTheDocument()
+  })
+
+  it('permet d’abandonner un brouillon existant en vue classique et le purge du stockage', () => {
+    const clientId = 'client-test-123'
+    ecrireBrouillon({
+      clientId,
+      date: '2026-10-14',
+      duree: '45',
+      notes: 'Brouillon à jeter',
+      lignes: [],
+    })
+
+    expect(localStorage.getItem(`vdcoach_brouillon_seance:${clientId}`)).not.toBeNull()
+
+    renduNouvelleSeance(clientId)
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    const btnAbandonner = screen.getByRole('button', { name: 'Abandonner' })
+    fireEvent.click(btnAbandonner)
+
+    // Le bandeau disparaît et le localStorage est purgé
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(localStorage.getItem(`vdcoach_brouillon_seance:${clientId}`)).toBeNull()
+  })
 })
+
+
+

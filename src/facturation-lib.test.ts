@@ -208,7 +208,7 @@ describe('facturation-lib.ts', () => {
 
     it('calcule le résumé du mois pour un client solo', async () => {
       const mockSeancesSelect = vi.fn().mockReturnValue({
-        in: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
             lt: vi.fn().mockResolvedValue({
               data: [
@@ -231,6 +231,7 @@ describe('facturation-lib.ts', () => {
         '2025-05',
       )
 
+      expect(mockSeancesSelect().eq).toHaveBeenCalledWith('client_id', 'c1')
       expect(res).toEqual({
         n: 2,
         avec: [],
@@ -238,7 +239,7 @@ describe('facturation-lib.ts', () => {
       })
     })
 
-    it('prend en compte les membres du groupe de facturation et exclut les IDs demandés', async () => {
+    it('prend en compte les membres du groupe de facturation et ne compte que les séances du client', async () => {
       const mockClientsSelect = vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({
           data: [
@@ -250,15 +251,14 @@ describe('facturation-lib.ts', () => {
       })
 
       const mockSeancesSelect = vi.fn().mockReturnValue({
-        in: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
             lt: vi.fn().mockResolvedValue({
               data: [
-                // Même séance partagée avec le même session_id pour David et Sarah
+                // Séance du client David (partagée avec Sarah)
                 { id: 's1', session_id: 'commune-1' },
-                { id: 's2', session_id: 'commune-1' },
-                // Séance solo Sarah à exclure
-                { id: 's3', session_id: null },
+                // Autre séance de David à exclure
+                { id: 's2', session_id: null },
               ],
               error: null,
             }),
@@ -275,9 +275,10 @@ describe('facturation-lib.ts', () => {
       const res = await resumeMois(
         { id: 'c1', prenom: 'David', groupe_facturation: 'grp-1' },
         '2025-05',
-        new Set(['s3']), // s3 exclu
+        new Set(['s2']), // s2 exclu
       )
 
+      expect(mockSeancesSelect().eq).toHaveBeenCalledWith('client_id', 'c1')
       expect(res).toEqual({
         n: 1, // commune-1 compte pour 1 seule séance
         avec: ['Sarah'],
@@ -288,7 +289,7 @@ describe('facturation-lib.ts', () => {
     it('renvoie null en cas d’erreur Supabase', async () => {
       vi.mocked(supabase.from).mockReturnValue({
         select: vi.fn().mockReturnValue({
-          in: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
             gte: vi.fn().mockReturnValue({
               lt: vi.fn().mockResolvedValue({ data: null, error: new Error('DB error') }),
             }),

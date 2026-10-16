@@ -8,6 +8,8 @@ import './suivi.css'
 import { TYPES } from './definitions'
 import Courbe, { type Point } from './Courbe'
 import Icone from './icones'
+import { CATALOGUE_EXERCICES } from './catalogue-exercices'
+import { detecterSchemaMoteur } from './SelecteurExercice'
 
 const MAX_REPS_1RM = 12
 
@@ -25,7 +27,7 @@ type SeanceExo = {
   }[]
 }
 
-function marquerRecords(points: Point[]): Point[] {
+export function marquerRecords(points: Point[]): Point[] {
   let max = -Infinity
   return points.map((p, i) => {
     const record = i > 0 && p.valeur > max
@@ -45,13 +47,41 @@ function semaineSuivante(d: string) {
   return x.toLocaleDateString('sv-SE')
 }
 
-const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
+export const e1rm = (x: { charge_kg: number | null; repetitions: number | null }) =>
   x.charge_kg === null || Number(x.charge_kg) <= 0 || x.repetitions === null || x.repetitions < 1 || x.repetitions > MAX_REPS_1RM
     ? null
     : x.repetitions === 1 ? Number(x.charge_kg) : Number(x.charge_kg) * (1 + x.repetitions / 30)
-const arrondi = (n: number) => Math.round(n * 10) / 10
+export const arrondi = (n: number) => Math.round(n * 10) / 10
 
-function minutesCardioExo(x: { series: number | null; duree_sec?: number | null; duree_min: number | null }): number {
+export const cle = (n: string) => n.trim().toLowerCase()
+
+export const CATALOGUE_GROUPES: Record<string, string> = Object.fromEntries(
+  CATALOGUE_EXERCICES.map(e => [cle(e.nom), e.groupe]),
+)
+
+export function estExerciceCardio(
+  x: { nom: string; distance_km?: number | null },
+  groupesBiblio?: Record<string, string>,
+): boolean {
+  if (x.distance_km != null && Number(x.distance_km) > 0) return true
+  const nomCle = cle(x.nom ?? '')
+  if (!nomCle) return false
+
+  // 1. Groupe répertorié dans la bibliothèque ou le catalogue officiel
+  const groupe = groupesBiblio?.[nomCle] ?? CATALOGUE_GROUPES[nomCle]
+  if (groupe) {
+    return groupe.trim().toLowerCase() === 'cardio'
+  }
+
+  // 2. Détection par schéma moteur heuristique pour les exercices personnalisés non classés
+  return detecterSchemaMoteur(x.nom) === 'cardio'
+}
+
+export function minutesCardioExo(
+  x: { nom: string; series: number | null; duree_sec?: number | null; duree_min: number | null; distance_km?: number | null },
+  groupesBiblio?: Record<string, string>,
+): number {
+  if (!estExerciceCardio(x, groupesBiblio)) return 0
   const nbSeries = x.series ?? 1
   if (x.duree_sec != null) return (nbSeries * Number(x.duree_sec)) / 60
   if (x.duree_min != null) return nbSeries * Number(x.duree_min)
@@ -72,14 +102,16 @@ export default function Suivi() {
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
   const suppressions = useSuppressionsEnAttente()
+  const [biblioGroupes, setBiblioGroupes] = useState<Record<string, string>>(() => ({ ...CATALOGUE_GROUPES }))
   const [masquees, setMasquees] = useState<string[]>([])
 
   async function charger() {
     if (!clientId) return
-    const [m, s, o] = await Promise.all([
+    const [m, s, o, b] = await Promise.all([
       supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure').order('id'),
       supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions, duree_sec, duree_min, distance_km)').eq('client_id', clientId).order('date_seance'),
       supabase.from('objectifs').select('source, reference, valeur_cible').eq('client_id', clientId).order('created_at'),
+      supabase.from('bibliotheque_exercices').select('nom, groupe'),
     ])
     setPret(true)
     const err = m.error ?? s.error ?? o.error
@@ -88,6 +120,12 @@ export default function Suivi() {
     setMesures(m.data as Mesure[])
     setSeances(s.data as unknown as SeanceExo[])
     setObjectifs((o.data ?? []) as { source: string; reference: string; valeur_cible: number }[])
+    if (b.data) {
+      setBiblioGroupes(prev => ({
+        ...prev,
+        ...Object.fromEntries((b.data as { nom: string; groupe: string }[]).map(x => [cle(x.nom), x.groupe])),
+      }))
+    }
   }
 
   useEffect(() => {
@@ -163,7 +201,7 @@ export default function Suivi() {
     const parSemaine = new Map<string, number>()
     for (const s of seances)
       for (const x of s.exercices) {
-        const min = minutesCardioExo(x)
+        const min = minutesCardioExo(x, biblioGroupes)
         if (min > 0) parSemaine.set(lundi(s.date_seance), (parSemaine.get(lundi(s.date_seance)) ?? 0) + min)
       }
     const semainesCardio = [...parSemaine.keys()].sort()
@@ -180,8 +218,11 @@ export default function Suivi() {
     }
     const depuis30 = jour(29)
     const aujourdhuiStr = jour(0)
-    const cardio30 = seances.filter(s => s.date_seance >= depuis30 && s.date_seance <= aujourdhuiStr).flatMap(s => s.exercices)
-    const min30 = Math.round(cardio30.reduce((total, x) => total + minutesCardioExo(x), 0))
+    const cardio30 = seances
+      .filter(s => s.date_seance >= depuis30 && s.date_seance <= aujourdhuiStr)
+      .flatMap(s => s.exercices)
+      .filter(x => estExerciceCardio(x, biblioGroupes))
+    const min30 = Math.round(cardio30.reduce((total, x) => total + minutesCardioExo(x, biblioGroupes), 0))
     const k30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0) * (x.series ?? 1), 0)
 
     const recs = noms
@@ -203,7 +244,7 @@ export default function Suivi() {
       .filter(r => r.charge.valeur > 0 && Boolean(r.charge.date))
 
     return { records: recs, pointsCardio: ptsCardio, minutes30: min30, km30: k30 }
-  }, [seances, noms])
+  }, [seances, noms, biblioGroupes])
 
   const mesuresType = mesures.filter(m => m.type === type)
   const pointsMesure = mesuresType.map(m => ({ date: m.date_mesure, valeur: Number(m.valeur) }))
@@ -255,13 +296,13 @@ export default function Suivi() {
               <p className="meta">Aucun record avec charge pour l'instant.</p>
             )}
 
-            {pointsCardio.length > 0 && (
+            {(pointsCardio.length > 0 || minutes30 > 0 || km30 > 0) && (
               <>
                 <h3>Cardio</h3>
                 <p className="meta">
                   Sur 30 jours : {minutes30} min{km30 > 0 ? ` · ${km30.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km` : ''}. Minutes cumulées par semaine, chaque point est placé au lundi de la semaine.
                 </p>
-                <Courbe nom="Cardio" points={pointsCardio} unite="min" />
+                {pointsCardio.length > 0 && <Courbe nom="Cardio" points={pointsCardio} unite="min" />}
               </>
             )}
           </div>

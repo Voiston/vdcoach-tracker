@@ -251,6 +251,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [choix, setChoix] = useState<CibleChoix | null>(null)
   const [conserverParametres, setConserverParametres] = useState(true)
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
+  const [sessionIdExistant, setSessionIdExistant] = useState<string | null>(null)
   const [date, setDate] = useState(aujourdhui())
   const [duree, setDuree] = useState('60')
   const [diffMuscu, setDiffMuscu] = useState('')
@@ -380,11 +381,12 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (seanceId) {
       supabase
         .from('seances')
-        .select(`client_id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, ${EXOS}`)
+        .select(`client_id, session_id, date_seance, duree_min, ressenti, diff_muscu, diff_cardio, fatigue, sommeil, notes, ${EXOS}`)
         .eq('id', seanceId)
         .single()
         .then(({ data, error }) => {
           if (error || !data) return setErreur(error ? messageErreur(error) : 'Séance introuvable.')
+          setSessionIdExistant(((data as any).session_id as string | null) ?? null)
           setDate(data.date_seance)
           setDuree(txt(data.duree_min))
           setDiffMuscu(txt(data.diff_muscu ?? data.ressenti))
@@ -395,6 +397,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           setLignes(versLignes(data.exercices as Exo[]))
           setAnciens((data.exercices as Exo[]).map(x => x.id))
         })
+    } else {
+      setSessionIdExistant(null)
     }
   }, [seanceId])
 
@@ -593,6 +597,16 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const aRessentisInvites = Object.values(ressentisInvites).some(
       r => r.diff_muscu || r.diff_cardio || r.fatigue || r.sommeil || (r.notes ?? '').trim(),
     )
+    const aContenuLignes = lignes.some(
+      l =>
+        l.nom.trim() ||
+        l.series.trim() ||
+        l.repetitions.trim() ||
+        l.charge_kg.trim() ||
+        l.duree_sec.trim() ||
+        l.distance_km.trim() ||
+        l.reglage.trim(),
+    )
     const contenu =
       diffMuscu ||
       diffCardio ||
@@ -601,7 +615,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       notes.trim() ||
       invites.length > 0 ||
       aRessentisInvites ||
-      lignes.some(l => l.nom.trim())
+      aContenuLignes
     if (!contenu) return
     if (brouillon) setBrouillon(null)
     const minuteur = setTimeout(
@@ -969,6 +983,14 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (id) {
       const { error } = await supabase.from('seances').update(champs).eq('id', id)
       if (error) return echec(messageErreur(error))
+      if (sessionIdExistant) {
+        const { error: errPartagees } = await supabase
+          .from('seances')
+          .update({ date_seance: date, duree_min: num(duree) })
+          .eq('session_id', sessionIdExistant)
+          .neq('id', id)
+        if (errPartagees) return echec(messageErreur(errPartagees))
+      }
     } else {
       const { data, error } = await supabase.from('seances').insert(champs).select('id').single()
       if (error) return echec(messageErreur(error))

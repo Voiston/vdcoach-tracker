@@ -1,22 +1,21 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { calculerBilan, construireBilan, type Bilan, type MesureBilan, type SeanceCharges } from './bilan-lib'
+import {
+  calculerBilan,
+  construireBilan,
+  selectionnerCourbesExercices,
+  type Bilan,
+  type CourbeExercice,
+  type MesureBilan,
+  type SeanceCharges,
+} from './bilan-lib'
 import BilanPdf, { ApercuBilanPdf } from './BilanPdf'
 import type { Point } from './Courbe'
 import { bornesMois, decalerMois, libelleMois, moisCourant } from './facturation-lib'
 import { calculerMuscles, chargerBibliothequeMuscles, type Volume } from './muscles-lib'
 import { chargerObjectifs } from './objectifs-lib'
 import { Champ, MessageErreur, useClient, useNotifier, useOccupe } from './ui'
-
-function marquerRecords(points: Point[]): Point[] {
-  let max = -Infinity
-  return points.map((p, i) => {
-    const record = i > 0 && p.valeur > max
-    max = Math.max(max, p.valeur)
-    return { ...p, record }
-  })
-}
 
 export default function BilanMensuel() {
   const client = useClient()
@@ -28,7 +27,7 @@ export default function BilanMensuel() {
   const [bilan, setBilan] = useState<Bilan | null>(null)
   const [parMuscle, setParMuscle] = useState<Record<string, Volume>>({})
   const [poids, setPoids] = useState<Point[]>([])
-  const [courbesExos, setCourbesExos] = useState<{ nom: string; points: Point[] }[]>([])
+  const [courbesExos, setCourbesExos] = useState<CourbeExercice[]>([])
   const [exoChoisi, setExoChoisi] = useState('')
   const [mot, setMot] = useState('')
   const [apercuOuvert, setApercuOuvert] = useState(false)
@@ -75,27 +74,9 @@ export default function BilanMensuel() {
         .map(x => ({ date: x.date_mesure, valeur: Number(x.valeur) })),
     )
 
-    // Courbes d'exercices : on privilégie les exercices pratiqués pendant le mois qui ont au moins 2 séances avec charge
-    const seancesJusquaFin = seances.filter(x => x.date_seance < fin)
-    const frequenceMois = new Map<string, number>()
-    for (const seance of seances.filter(x => x.date_seance >= debut && x.date_seance < fin)) {
-      for (const x of seance.exercices) {
-        if (x.charge_kg !== null) frequenceMois.set(x.nom.trim(), (frequenceMois.get(x.nom.trim()) ?? 0) + 1)
-      }
-    }
-    const tousNoms = [...new Set(seancesJusquaFin.flatMap(seance => seance.exercices.filter(x => x.charge_kg !== null).map(x => x.nom.trim())))]
-    const candidats = tousNoms
-      .map(nom => {
-        const pts = seancesJusquaFin.flatMap(seance => {
-          const charges = seance.exercices.filter(x => x.nom.trim() === nom && x.charge_kg !== null).map(x => Number(x.charge_kg))
-          return charges.length ? [{ date: seance.date_seance, valeur: Math.max(...charges) }] : []
-        })
-        return { nom, points: marquerRecords(pts), freq: frequenceMois.get(nom) ?? 0 }
-      })
-      .filter(c => c.points.length >= 2)
-      .sort((x, y) => y.freq - x.freq || y.points.length - x.points.length)
-
-    setCourbesExos(candidats.map(({ nom, points }) => ({ nom, points })))
+    // Courbes d'exercices : on privilégie les exercices pratiqués pendant le mois qui ont au moins 2 séances avec charge (> 0 kg)
+    const candidats = selectionnerCourbesExercices(seances, mois)
+    setCourbesExos(candidats)
     setExoChoisi(candidats[0]?.nom ?? '')
   }
 
