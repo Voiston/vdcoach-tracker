@@ -76,7 +76,7 @@ export default function Suivi() {
   async function charger() {
     if (!clientId) return
     const [m, s, o] = await Promise.all([
-      supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure'),
+      supabase.from('mesures').select('*').eq('client_id', clientId).order('date_mesure').order('id'),
       supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, repetitions, duree_sec, duree_min, distance_km)').eq('client_id', clientId).order('date_seance'),
       supabase.from('objectifs').select('source, reference, valeur_cible').eq('client_id', clientId).order('created_at'),
     ])
@@ -122,19 +122,33 @@ export default function Suivi() {
   }
 
   // On ne retient pour le suivi des charges que les exercices ayant au moins une charge strictement positive (> 0 kg)
-  const noms = useMemo(
-    () => [...new Set(seances.flatMap(s => s.exercices.filter(x => x.charge_kg !== null && Number(x.charge_kg) > 0).map(x => x.nom)))].sort(),
-    [seances],
-  )
-  const exoChoisi = noms.includes(exo) ? exo : noms[0] ?? ''
+  const noms = useMemo(() => {
+    const vus = new Map<string, string>()
+    for (const s of seances) {
+      for (const x of s.exercices) {
+        if (x.charge_kg !== null && Number(x.charge_kg) > 0 && x.nom?.trim()) {
+          const cle = x.nom.trim().toLowerCase()
+          if (!vus.has(cle)) vus.set(cle, x.nom.trim())
+        }
+      }
+    }
+    return [...vus.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [seances])
+  const exoChoisi = noms.find(n => n.trim().toLowerCase() === exo.trim().toLowerCase()) ?? noms[0] ?? ''
 
   const { pointsCharge, points1rm } = useMemo(() => {
+    const cleExo = exoChoisi.trim().toLowerCase()
     const charge: Point[] = seances.flatMap(s => {
-      const c = s.exercices.filter(x => x.nom === exoChoisi && x.charge_kg !== null && Number(x.charge_kg) > 0).map(x => Number(x.charge_kg))
+      const c = s.exercices
+        .filter(x => x.nom.trim().toLowerCase() === cleExo && x.charge_kg !== null && Number(x.charge_kg) > 0)
+        .map(x => Number(x.charge_kg))
       return c.length ? [{ date: s.date_seance, valeur: Math.max(...c) }] : []
     })
     const rm: Point[] = seances.flatMap(s => {
-      const v = s.exercices.filter(x => x.nom === exoChoisi).map(e1rm).filter((n): n is number => n !== null)
+      const v = s.exercices
+        .filter(x => x.nom.trim().toLowerCase() === cleExo)
+        .map(e1rm)
+        .filter((n): n is number => n !== null)
       return v.length ? [{ date: s.date_seance, valeur: arrondi(Math.max(...v)) }] : []
     })
     return { pointsCharge: marquerRecords(charge), points1rm: marquerRecords(rm) }
@@ -153,18 +167,26 @@ export default function Suivi() {
       for (let d = semainesCardio[0]; d <= semainesCardio[semainesCardio.length - 1]; d = semaineSuivante(d))
         ptsCardio.push({ date: d, valeur: arrondi(parSemaine.get(d) ?? 0) })
 
-    const depuis30 = new Date(Date.now() - 30 * 86_400_000).toLocaleDateString('sv-SE')
-    const cardio30 = seances.filter(s => s.date_seance >= depuis30).flatMap(s => s.exercices)
+    const jour = (n: number) => {
+      const d = new Date()
+      d.setHours(12, 0, 0, 0)
+      d.setDate(d.getDate() - n)
+      return d.toLocaleDateString('sv-SE')
+    }
+    const depuis30 = jour(29)
+    const aujourdhuiStr = jour(0)
+    const cardio30 = seances.filter(s => s.date_seance >= depuis30 && s.date_seance <= aujourdhuiStr).flatMap(s => s.exercices)
     const min30 = Math.round(cardio30.reduce((total, x) => total + minutesCardioExo(x), 0))
     const k30 = cardio30.reduce((total, x) => total + Number(x.distance_km ?? 0) * (x.series ?? 1), 0)
 
     const recs = noms
       .map(nom => {
+        const cleNom = nom.trim().toLowerCase()
         let charge = { valeur: 0, date: '' }
         let force = { valeur: 0, date: '' }
         for (const s of seances)
           for (const x of s.exercices) {
-            if (x.nom !== nom) continue
+            if (x.nom.trim().toLowerCase() !== cleNom) continue
             if (x.charge_kg !== null && Number(x.charge_kg) > charge.valeur) {
               charge = { valeur: Number(x.charge_kg), date: s.date_seance }
             }

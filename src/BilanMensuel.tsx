@@ -38,7 +38,7 @@ export default function BilanMensuel() {
   async function preparer() {
     const [s, m, o, b] = await Promise.all([
       supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg)').eq('client_id', client.id).order('date_seance'),
-      supabase.from('mesures').select('type, valeur, date_mesure').eq('client_id', client.id).order('date_mesure'),
+      supabase.from('mesures').select('type, valeur, date_mesure').eq('client_id', client.id).order('date_mesure').order('id'),
       chargerObjectifs(client.id),
       chargerBibliothequeMuscles(),
     ])

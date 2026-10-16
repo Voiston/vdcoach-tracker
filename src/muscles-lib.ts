@@ -37,6 +37,7 @@ export async function chargerBibliothequeMuscles(): Promise<{ biblio?: Record<st
 export async function chargerSeancesMuscles(clientId: string, jours: number, decalage = 0): Promise<{ seances?: SeanceExo[]; erreur?: unknown }> {
   const jour = (n: number) => {
     const d = new Date()
+    d.setHours(12, 0, 0, 0)
     d.setDate(d.getDate() - n)
     return d.toLocaleDateString('sv-SE')
   }

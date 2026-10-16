@@ -558,14 +558,17 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }, [clientId, seanceId, date])
 
   async function detecterRecords(): Promise<string[]> {
-    const vus = new Set<string>()
-    const candidats = lignes.flatMap(l => {
+    const parExo = new Map<string, { nom: string; charge: number }>()
+    for (const l of lignes) {
       const charge = valeurs(l).charge_kg
       const k = cle(l.nom)
-      if (!k || charge === null || vus.has(k)) return []
-      vus.add(k)
-      return [{ nom: l.nom.trim(), charge }]
-    })
+      if (!k || charge === null || !(charge > 0)) continue
+      const existant = parExo.get(k)
+      if (!existant || charge > existant.charge) {
+        parExo.set(k, { nom: l.nom.trim(), charge })
+      }
+    }
+    const candidats = [...parExo.values()]
 
     const resultats = await Promise.all(
       candidats.map(async ({ nom, charge }) => {
@@ -574,7 +577,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           .select('charge_kg, seances!inner(client_id)')
           .eq('seances.client_id', clientId)
           .ilike('nom', echapper(nom))
-          .not('charge_kg', 'is', null)
+          .gt('charge_kg', 0)
         if (seanceId) q = q.neq('seance_id', seanceId)
         const { data } = await q.order('charge_kg', { ascending: false }).limit(1)
         const precedent = data?.[0]?.charge_kg

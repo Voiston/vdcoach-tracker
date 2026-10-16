@@ -29,6 +29,7 @@ export default function Bilans() {
       .eq('client_id', clientId)
       .in('type', CLES)
       .order('date_mesure')
+      .order('id')
     setPret(true)
     if (error) return setErreur(messageErreur(error))
     setErreur('')

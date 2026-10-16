@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { TYPES, TESTS } from './definitions'
+import { joursDepuis } from './format'
 
 export type Source = 'mesure' | 'charge' | 'test'
 export type Objectif = { id: string; source: Source; reference: string; valeur_depart: number; valeur_cible: number; echeance: string | null }
@@ -18,7 +19,7 @@ export const libelle = (s: Source, ref: string) => (s === 'mesure' ? TYPES[ref]?
 export async function chargerObjectifs(clientId: string): Promise<{ donnees?: DonneesObjectifs; erreur?: unknown }> {
   const [o, m, s] = await Promise.all([
     supabase.from('objectifs').select('*').eq('client_id', clientId).order('created_at'),
-    supabase.from('mesures').select('type, valeur').eq('client_id', clientId).order('date_mesure'),
+    supabase.from('mesures').select('type, valeur').eq('client_id', clientId).order('date_mesure').order('id'),
     supabase.from('seances').select('exercices(nom, charge_kg)').eq('client_id', clientId),
   ])
   const erreur = o.error ?? m.error ?? s.error
@@ -50,8 +51,6 @@ export function etatObjectif(o: Objectif, actuelle: number | null) {
   const total = cible - depart
   const pct = actuelle === null ? 0 : Math.max(0, Math.min(100, ((actuelle - depart) / total) * 100))
   const atteint = actuelle !== null && (total > 0 ? actuelle >= cible : actuelle <= cible)
-  const reste = o.echeance
-    ? Math.ceil((Date.parse(o.echeance.length === 10 ? `${o.echeance}T12:00:00` : o.echeance) - Date.now()) / 86_400_000)
-    : null
+  const reste = o.echeance ? -joursDepuis(o.echeance) || 0 : null
   return { pct, atteint, reste }
 }
