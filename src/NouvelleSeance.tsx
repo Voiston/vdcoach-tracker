@@ -23,6 +23,7 @@ type Ligne = {
   distance_km: string
   repos_sec: string
   reglage: string
+  reglageOuvert?: boolean
   lie_suivant: boolean
   valide: boolean
   passe?: boolean
@@ -249,7 +250,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   const [modeleChargeId, setModeleChargeId] = useState<string | null>(null)
   const [choix, setChoix] = useState<CibleChoix | null>(null)
   const [conserverParametres, setConserverParametres] = useState(true)
-  const [reglagesOuverts, setReglagesOuverts] = useState<Record<number, boolean>>({})
   const [brouillon, setBrouillon] = useState(() => (seanceId ? null : lireBrouillon(clientId)))
   const [date, setDate] = useState(aujourdhui())
   const [duree, setDuree] = useState('60')
@@ -459,28 +459,56 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   async function mettreAJourModeleCharge() {
-    if (!modeleChargeId) return
+    if (!modeleChargeId || envoi) return
+    if (invalide) return setErreur('Corrige les valeurs invalides avant de mettre à jour le modèle.')
     const modeleActuel = modeles.find(m => m.id === modeleChargeId)
     const exos = lignes.filter(l => l.nom.trim())
     if (!exos.length) return setErreur('Ajoute au moins un exercice pour mettre à jour le modèle.')
 
-    const { error: errMaj } = await supabase.from('modeles').update({ duree_min: num(duree) }).eq('id', modeleChargeId)
-    if (errMaj) return setErreur(messageErreur(errMaj))
+    setEnvoi(true)
+    setErreur('')
 
-    const { error: errSuppr } = await supabase.from('modele_exercices').delete().eq('modele_id', modeleChargeId)
-    if (errSuppr) return setErreur(messageErreur(errSuppr))
+    try {
+      const { error: errMaj } = await supabase.from('modeles').update({ duree_min: num(duree) }).eq('id', modeleChargeId)
+      if (errMaj) return setErreur(messageErreur(errMaj))
 
-    const { error: errInsert } = await supabase.from('modele_exercices').insert(
-      exos.map((l, i) => ({
+      const { data: anciensExos, error: errAnciens } = await supabase
+        .from('modele_exercices')
+        .select('id')
+        .eq('modele_id', modeleChargeId)
+      if (errAnciens) return setErreur(messageErreur(errAnciens))
+      const anciensIds = (anciensExos ?? []).map(x => x.id as string)
+
+      const lignesDb = exos.map((l, i) => ({
         modele_id: modeleChargeId,
         ordre: i,
         nom: l.nom.trim(),
         ...valeurs(l),
         lie_suivant: i < exos.length - 1 ? l.lie_suivant : false,
-      })),
-    )
-    if (errInsert) return setErreur(messageErreur(errInsert))
-    notifier(`Modèle « ${modeleActuel?.nom ?? ''} » mis à jour`)
+      }))
+
+      let nouveauxIds: string[] = []
+      if (lignesDb.length) {
+        const { data: crees, error: errInsert } = await supabase
+          .from('modele_exercices')
+          .insert(lignesDb)
+          .select('id')
+        if (errInsert) return setErreur(messageErreur(errInsert))
+        nouveauxIds = (crees ?? []).map(x => x.id as string)
+      }
+
+      if (anciensIds.length) {
+        const { error: errSuppr } = await supabase.from('modele_exercices').delete().in('id', anciensIds)
+        if (errSuppr) {
+          if (nouveauxIds.length) await supabase.from('modele_exercices').delete().in('id', nouveauxIds)
+          return setErreur(messageErreur(errSuppr))
+        }
+      }
+
+      notifier(`Modèle « ${modeleActuel?.nom ?? ''} » mis à jour`)
+    } finally {
+      setEnvoi(false)
+    }
   }
 
   useEffect(() => {
@@ -631,22 +659,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (!choix) return
     if (choix.type === 'ajout_fin') {
       const nouvelle = creerLignePreRemplie(nom)
-      setLignes(l => {
-        const sansVide = l.filter(x => x.nom.trim() !== '')
-        const res = [...sansVide, nouvelle]
-        if (modeTerrain) {
-          setIndexTerrain(res.length - 1)
-          setEcranFinTerrain(false)
-        }
-        return res
-      })
+      const sansVide = lignes.filter(x => x.nom.trim() !== '')
+      const res = [...sansVide, nouvelle]
+      setLignes(res)
+      if (modeTerrain) {
+        setIndexTerrain(res.length - 1)
+        setEcranFinTerrain(false)
+      }
     } else if (choix.type === 'inserer_apres') {
       const nouvelle = creerLignePreRemplie(nom)
-      setLignes(l => {
-        const copie = [...l]
-        copie.splice(choix.index + 1, 0, nouvelle)
-        return copie
-      })
+      const copie = [...lignes]
+      copie.splice(choix.index + 1, 0, nouvelle)
+      setLignes(copie)
       if (modeTerrain) {
         setIndexTerrain(choix.index + 1)
         setEcranFinTerrain(false)
@@ -661,43 +685,51 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     const nouvelles = nomsChoisis.map(creerLignePreRemplie)
     if (choix?.type === 'inserer_apres') {
       const idx = choix.index
-      setLignes(l => {
-        const copie = [...l]
-        copie.splice(idx + 1, 0, ...nouvelles)
-        return copie
-      })
+      const copie = [...lignes]
+      copie.splice(idx + 1, 0, ...nouvelles)
+      setLignes(copie)
       if (modeTerrain) {
         setIndexTerrain(idx + 1)
         setEcranFinTerrain(false)
       }
     } else {
-      setLignes(l => {
-        const sansVide = l.filter(x => x.nom.trim() !== '')
-        const res = [...sansVide, ...nouvelles]
-        if (modeTerrain) {
-          setIndexTerrain(Math.max(0, res.length - nouvelles.length))
-          setEcranFinTerrain(false)
-        }
-        return res
-      })
+      const sansVide = lignes.filter(x => x.nom.trim() !== '')
+      const res = [...sansVide, ...nouvelles]
+      setLignes(res)
+      if (modeTerrain) {
+        setIndexTerrain(Math.max(0, res.length - nouvelles.length))
+        setEcranFinTerrain(false)
+      }
     }
     setChoix(null)
   }
 
   function retirer(i: number) {
-    setLignes(l => (l.length > 1 ? l.filter((_, j) => j !== i) : [vide()]))
+    if (lignes.length <= 1) {
+      setLignes([vide()])
+      return
+    }
+    const copie = lignes.filter((_, j) => j !== i)
+    if (!lignes[i].lie_suivant && i > 0 && lignes[i - 1].lie_suivant) {
+      copie[i - 1] = { ...copie[i - 1], lie_suivant: false }
+    }
+    if (copie.length > 0 && copie[copie.length - 1].lie_suivant) {
+      copie[copie.length - 1] = { ...copie[copie.length - 1], lie_suivant: false }
+    }
+    setLignes(copie)
     if (indexTerrain >= lignes.length - 1) setIndexTerrain(Math.max(0, lignes.length - 2))
   }
 
   function deplacer(i: number, delta: -1 | 1) {
     const cible = i + delta
     if (cible < 0 || cible >= lignes.length) return
-    setLignes(l => {
-      const copie = [...l]
-      const [elem] = copie.splice(i, 1)
-      copie.splice(cible, 0, elem)
-      return copie
-    })
+    const copie = [...lignes]
+    const [elem] = copie.splice(i, 1)
+    copie.splice(cible, 0, elem)
+    if (copie.length > 0 && copie[copie.length - 1].lie_suivant) {
+      copie[copie.length - 1] = { ...copie[copie.length - 1], lie_suivant: false }
+    }
+    setLignes(copie)
     if (modeTerrain && indexTerrain === i) setIndexTerrain(cible)
   }
 
@@ -793,6 +825,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     for (let k = depuis + 1; k < etatLignes.length; k++) {
       if (!etatLignes[k].valide && !etatLignes[k].passe) return k
     }
+    const nonFaitNonPasse = etatLignes.findIndex((l, k) => k !== depuis && !l.valide && !l.passe)
+    if (nonFaitNonPasse !== -1) return nonFaitNonPasse
     const nonFait = etatLignes.findIndex((l, k) => k !== depuis && !l.valide)
     return nonFait !== -1 ? nonFait : null
   }
@@ -830,6 +864,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     if (suivant !== null) {
       setIndexTerrain(suivant)
       setEcranFinTerrain(false)
+    } else {
+      setEcranFinTerrain(true)
     }
   }
 
@@ -1733,7 +1769,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                     zonesSensibles,
                   )
                 : []
-              const afficherReglage = Boolean(l.reglage.trim() || reglagesOuverts[i])
+              const afficherReglage = Boolean(l.reglage.trim() || l.reglageOuvert)
 
               const resumeCompact = temps
                 ? [
@@ -1958,7 +1994,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
                   <div className="exercice-pied">
                     {!afficherReglage && (
-                      <button type="button" className="lien superset-lien" onClick={() => setReglagesOuverts(r => ({ ...r, [i]: true }))}>
+                      <button type="button" className="lien superset-lien" onClick={() => maj(i, 'reglageOuvert', true)}>
                         + ⚙ Réglage
                       </button>
                     )}
@@ -2001,7 +2037,13 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
                 + Ajouter des exercices
               </button>
               {modeleChargeId && (
-                <button type="button" className="secondaire" onClick={mettreAJourModeleCharge} style={{ flex: 1 }}>
+                <button
+                  type="button"
+                  className="secondaire"
+                  disabled={envoi || Boolean(invalide)}
+                  onClick={mettreAJourModeleCharge}
+                  style={{ flex: 1 }}
+                >
                   Mettre à jour le modèle
                 </button>
               )}

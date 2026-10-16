@@ -137,12 +137,12 @@ export function MessageErreur({ message, reessayer }: { message: string; reessay
   )
 }
 
-export function ErreurChargement({ message }: { message: string }) {
+export function ErreurChargement({ message, reessayer }: { message: string; reessayer?: () => void }) {
   return (
     <div className="etat-vide" role="alert">
       <strong>Chargement impossible</strong>
       <p>{message}</p>
-      <button type="button" className="secondaire" onClick={() => window.location.reload()}>Réessayer</button>
+      <button type="button" className="secondaire" onClick={reessayer ?? (() => window.location.reload())}>Réessayer</button>
     </div>
   )
 }

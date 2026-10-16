@@ -50,6 +50,8 @@ export function etatObjectif(o: Objectif, actuelle: number | null) {
   const total = cible - depart
   const pct = actuelle === null ? 0 : Math.max(0, Math.min(100, ((actuelle - depart) / total) * 100))
   const atteint = actuelle !== null && (total > 0 ? actuelle >= cible : actuelle <= cible)
-  const reste = o.echeance ? Math.ceil((Date.parse(o.echeance) - Date.now()) / 86_400_000) : null
+  const reste = o.echeance
+    ? Math.ceil((Date.parse(o.echeance.length === 10 ? `${o.echeance}T12:00:00` : o.echeance) - Date.now()) / 86_400_000)
+    : null
   return { pct, atteint, reste }
 }

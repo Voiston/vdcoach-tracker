@@ -24,8 +24,8 @@ export function joursDepuis(d: string): number {
   return Math.round((tJour - tCible) / 86_400_000)
 }
 
-export function ilYa(d: string, court = false): string {
-  const jours = joursDepuis(d)
+export function ilYa(d: string | number, court = false): string {
+  const jours = typeof d === 'number' ? d : joursDepuis(d)
   if (jours <= 0) return "aujourd'hui"
   if (jours === 1) return 'hier'
   return `il y a ${jours} ${court ? 'j' : 'jours'}`

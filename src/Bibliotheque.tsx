@@ -64,12 +64,37 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       setForm({ ...form, id })
     }
 
+    const { data: anciensMuscles, error: errAnciens } = await supabase
+      .from('exercice_muscles')
+      .select('muscle')
+      .eq('exercice_id', id)
+    if (errAnciens) return setErreur(messageErreur(errAnciens))
+
     const muscles = [...new Map(form.muscles.filter(m => m.muscle).map(m => [m.muscle, Number(m.coefficient)])).entries()]
-    const suppression = await supabase.from('exercice_muscles').delete().eq('exercice_id', id)
-    if (suppression.error) return setErreur(messageErreur(suppression.error))
     if (muscles.length) {
-      const { error } = await supabase.from('exercice_muscles').insert(muscles.map(([muscle, coefficient]) => ({ exercice_id: id, muscle, coefficient })))
-      if (error) return setErreur(messageErreur(error))
+      const { error: errUpsert } = await supabase
+        .from('exercice_muscles')
+        .upsert(
+          muscles.map(([muscle, coefficient]) => ({ exercice_id: id, muscle, coefficient })),
+          { onConflict: 'exercice_id,muscle' },
+        )
+      if (errUpsert) return setErreur(messageErreur(errUpsert))
+
+      const nouveauxMuscles = new Set(muscles.map(([m]) => m))
+      const aSupprimer = (anciensMuscles ?? [])
+        .map(a => a.muscle as string)
+        .filter(m => !nouveauxMuscles.has(m))
+      if (aSupprimer.length) {
+        const { error: errDel } = await supabase
+          .from('exercice_muscles')
+          .delete()
+          .eq('exercice_id', id)
+          .in('muscle', aSupprimer)
+        if (errDel) return setErreur(messageErreur(errDel))
+      }
+    } else if ((anciensMuscles ?? []).length) {
+      const { error: errSuppr } = await supabase.from('exercice_muscles').delete().eq('exercice_id', id)
+      if (errSuppr) return setErreur(messageErreur(errSuppr))
     }
 
     setForm(null)

@@ -29,9 +29,14 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const [evolution, setEvolution] = useState<string | null>(null)
 
   async function charger() {
-    const jour = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString('sv-SE')
-    const j30 = jour(30)
-    const j60 = jour(60)
+    const jour = (n: number) => {
+      const d = new Date()
+      d.setDate(d.getDate() - n)
+      return d.toLocaleDateString('sv-SE')
+    }
+    const aujourdhuiStr = jour(0)
+    const j30 = jour(29)
+    const j60 = jour(59)
 
     const [s, o, m, b] = await Promise.all([
       supabase
@@ -67,7 +72,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     }
     setDonnees({ objectifs: (o.data ?? []) as Objectif[], derniereMesure, meilleureCharge, nomsExercices })
 
-    const s30 = toutes.filter(x => x.date_seance >= j30)
+    const s30 = toutes.filter(x => x.date_seance >= j30 && x.date_seance <= aujourdhuiStr)
     const p30 = toutes.filter(x => x.date_seance >= j60 && x.date_seance < j30)
     const courante = calculerMuscles(s30, b.biblio ?? null)
     const avant = calculerMuscles(p30, b.biblio ?? null)

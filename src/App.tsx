@@ -6,7 +6,7 @@ import { MSG_SESSION, messageErreur } from './erreurs'
 import Accueil from './Accueil'
 import type { Rubrique } from './Profil'
 import Icone from './icones'
-import { BandeauReseau, Champ, EcranChargement, Logo, NavigationCtx, Squelette, useEcranLarge } from './ui'
+import { BandeauReseau, Champ, EcranChargement, ErreurChargement, Logo, NavigationCtx, Squelette, useEcranLarge } from './ui'
 import { Verification2FA } from './Auth2FA'
 
 const Profil = lazy(() => import('./Profil'))
@@ -53,15 +53,25 @@ export default function App() {
   }, [])
 
   const [exige2fa, setExige2fa] = useState<boolean | undefined>(undefined)
+  const [erreur2fa, setErreur2fa] = useState<string | null>(null)
 
   async function verifierNiveau() {
-    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    setExige2fa(data?.nextLevel === 'aal2' && data.currentLevel !== 'aal2')
+    setErreur2fa(null)
+    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    if (error || !data) {
+      setErreur2fa(messageErreur(error ?? new Error('Erreur lors de la vérification 2FA.')))
+      return
+    }
+    setExige2fa(data.nextLevel === 'aal2' && data.currentLevel !== 'aal2')
   }
 
   useEffect(() => {
-    if (!session) setExige2fa(undefined)
-    else verifierNiveau()
+    if (!session) {
+      setExige2fa(undefined)
+      setErreur2fa(null)
+    } else {
+      verifierNiveau()
+    }
   }, [session])
 
   const [palette, setPalette] = useState(false)
@@ -108,6 +118,7 @@ export default function App() {
 
   if (session === undefined) return <EcranChargement />
   if (!session) return <Connexion message={sessionExpiree ? MSG_SESSION : ''} />
+  if (erreur2fa) return <ErreurChargement message={erreur2fa} reessayer={verifierNiveau} />
   if (exige2fa === undefined) return <EcranChargement />
   if (exige2fa) return <Verification2FA onOk={verifierNiveau} />
 
