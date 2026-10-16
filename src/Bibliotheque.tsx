@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
-import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import LegendeNiveaux from './LegendeNiveaux'
 import Icone from './icones'
 
@@ -24,6 +24,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
   const [occupe, lancer] = useOccupe()
   const [charge, setCharge] = useState(false)
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [masques, setMasques] = useState<string[]>([])
 
   async function charger() {
@@ -103,8 +104,11 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
     notifier(form.id ? 'Exercice modifié' : 'Exercice ajouté')
   }
 
+  useSuppressionTerminee(charger)
+
   function supprimer(x: Reference) {
     supprimerAvecAnnulation({
+      id: x.id,
       notifier,
       message: `« ${x.nom} » supprimé`,
       masquer: () => setMasques(l => [...l, x.id]),
@@ -117,7 +121,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
     })
   }
 
-  const affiches = liste.filter(x => !masques.includes(x.id) && (!groupe || x.groupe === groupe) && x.nom.toLowerCase().includes(recherche.trim().toLowerCase()))
+  const affiches = liste.filter(x => !masques.includes(x.id) && !suppressions.has(x.id) && (!groupe || x.groupe === groupe) && x.nom.toLowerCase().includes(recherche.trim().toLowerCase()))
 
   return (
     <section>

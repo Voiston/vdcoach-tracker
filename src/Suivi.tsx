@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { REGLES, verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { aujourdhui, courte } from './format'
-import { Champ, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
+import { Champ, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import './suivi.css'
 import { TYPES } from './definitions'
 import Courbe, { type Point } from './Courbe'
@@ -71,6 +71,7 @@ export default function Suivi() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [masquees, setMasquees] = useState<string[]>([])
 
   async function charger() {
@@ -94,6 +95,8 @@ export default function Suivi() {
     charger()
   }, [clientId])
 
+  useSuppressionTerminee(charger)
+
   async function ajouter(e: React.FormEvent) {
     e.preventDefault()
     const v = Number(valeur.replace(',', '.'))
@@ -109,6 +112,7 @@ export default function Suivi() {
 
   function supprimer(m: Mesure) {
     supprimerAvecAnnulation({
+      id: m.id,
       notifier,
       message: `Mesure du ${courte(m.date_mesure)} supprimée`,
       masquer: () => setMasquees(l => [...l, m.id]),
@@ -275,7 +279,7 @@ export default function Suivi() {
               <button type="submit" disabled={occupe || Boolean(verifier(valeur, REGLES.mesure))}>{occupe ? 'Ajout en cours…' : 'Ajouter la mesure'}</button>
             </form>
             <ul className="liste">
-              {[...mesuresType].filter(m => !masquees.includes(m.id)).reverse().slice(0, 5).map(m => (
+              {[...mesuresType].filter(m => !masquees.includes(m.id) && !suppressions.has(m.id)).reverse().slice(0, 5).map(m => (
                 <li key={m.id}>
                   <span>{courte(m.date_mesure)} — <strong>{m.valeur} {TYPES[type].unite}</strong></span>
                   <button

@@ -5,7 +5,7 @@ import { analyserSupersets, libelleRepos, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
 import Icone from './icones'
-import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import { REGLES, verifier } from './validation'
 
 type ModeleExo = LigneProgramme & { id?: string; ordre: number }
@@ -57,6 +57,7 @@ export default function Modeles() {
   const [erreur, setErreur] = useState('')
   const [charge, setCharge] = useState(false)
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [occupe, lancer] = useOccupe()
   const [enRenommage, setEnRenommage] = useState<Modele | null>(null)
   const [modelePdf, setModelePdf] = useState<Modele | null>(null)
@@ -335,8 +336,11 @@ export default function Modeles() {
     notifier('Modèle renommé')
   }
 
+  useSuppressionTerminee(charger)
+
   function supprimer(m: Modele) {
     supprimerAvecAnnulation({
+      id: m.id,
       notifier,
       message: `Modèle « ${m.nom} » supprimé`,
       masquer: () => setMasques(l => [...l, m.id]),
@@ -346,7 +350,7 @@ export default function Modeles() {
   }
 
   const visibles = [...modeles]
-    .filter(m => !masques.includes(m.id))
+    .filter(m => !masques.includes(m.id) && !suppressions.has(m.id))
     .sort((a, b) => Number(favoris.has(b.id)) - Number(favoris.has(a.id)) || a.nom.localeCompare(b.nom, 'fr'))
 
   const supersetsEdition = analyserSupersets(lignesEdition)

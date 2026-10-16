@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { Client } from './Clients'
 import { libelleZone } from './definitions'
 import { messageErreur } from './erreurs'
 import { libelleMois, resumeMois } from './facturation-lib'
 import { ilYa } from './format'
-import { Avatar, ClientCtx, ErreurChargement, Squelette } from './ui'
+import { Avatar, ClientCtx, ErreurChargement, Squelette, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import Apercu from './Apercu'
 import Seances from './Seances'
 import Suivi from './Suivi'
@@ -40,6 +40,7 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
   const [resume, setResume] = useState<{ n: number; avec: string[]; mois: string } | null>(null)
   const [total, setTotal] = useState<number | null>(null)
   const [derniereDate, setDerniereDate] = useState<string | null>(null)
+  const suppressions = useSuppressionsEnAttente()
 
   async function recharger() {
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).single()
@@ -52,10 +53,9 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
     recharger()
   }, [clientId])
 
-  // Séances du mois, total et dernière séance, recalculés quand on change de rubrique.
-  useEffect(() => {
+  const rafraichirStats = useCallback(() => {
     if (!client) return
-    resumeMois(client).then(setResume)
+    resumeMois(client, undefined, suppressions).then(setResume)
     supabase
       .from('seances')
       .select('id, session_id, date_seance')
@@ -63,11 +63,19 @@ export default function Profil({ clientId, rubrique, seanceId, onRubrique, onRet
       .order('date_seance', { ascending: false })
       .then(({ data }) => {
         if (data) {
-          setTotal(new Set(data.map(s => s.session_id ?? s.id)).size)
-          setDerniereDate(data[0]?.date_seance ?? null)
+          const valides = data.filter(s => !suppressions.has(s.id))
+          setTotal(new Set(valides.map(s => s.session_id ?? s.id)).size)
+          setDerniereDate(valides[0]?.date_seance ?? null)
         }
       })
-  }, [client?.id, client?.groupe_facturation, rubrique])
+  }, [client, suppressions])
+
+  // Séances du mois, total et dernière séance, recalculés quand on change de rubrique ou que les suppressions évoluent.
+  useEffect(() => {
+    rafraichirStats()
+  }, [rafraichirStats, rubrique])
+
+  useSuppressionTerminee(rafraichirStats)
 
   if (erreur && !client) return <ErreurChargement message={erreur} />
   if (!client) return <Squelette lignes={3} />

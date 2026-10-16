@@ -4,7 +4,7 @@ import { verifier } from './validation'
 import { messageErreur } from './erreurs'
 import { aujourdhui, courte } from './format'
 import Chronometre from './Chronometre'
-import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
+import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import { TESTS } from './definitions'
 
 type Resultat = { id: string; date_mesure: string; type: string; valeur: number }
@@ -19,6 +19,7 @@ export default function Bilans() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [masquees, setMasquees] = useState<string[]>([])
 
   async function charger() {
@@ -55,8 +56,11 @@ export default function Bilans() {
     notifier('Bilan enregistré')
   }
 
+  useSuppressionTerminee(charger)
+
   function supprimerBilan(d: string) {
     supprimerAvecAnnulation({
+      id: d,
       notifier,
       message: `Bilan du ${courte(d)} supprimé`,
       masquer: () => setMasquees(l => [...l, d]),
@@ -69,7 +73,7 @@ export default function Bilans() {
     })
   }
 
-  const visibles = resultats.filter(r => !masquees.includes(r.date_mesure))
+  const visibles = resultats.filter(r => !masquees.includes(r.date_mesure) && !suppressions.has(r.date_mesure))
   const comparaison = CLES.flatMap(cle => {
     const l = visibles.filter(x => x.type === cle)
     return l.length ? [{ cle, t: TESTS[cle], premier: l[0], dernier: l[l.length - 1], n: l.length }] : []

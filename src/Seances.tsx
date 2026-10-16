@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { analyserSupersets, dateFr, libelleRepos, resumeCardio, resumeRessentis } from './format'
 import FenetreProgrammePdf from './ProgrammePdf'
-import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier } from './ui'
+import { EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 
 type Exercice = {
   id: string
@@ -37,6 +37,7 @@ const TAILLE = 20
 export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) => void; onNouvelle: () => void }) {
   const client = useClient()
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [seances, setSeances] = useState<Seance[]>([])
   const [fin, setFin] = useState(false)
   const [chargement, setChargement] = useState(false)
@@ -68,8 +69,11 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     charger(0)
   }, [client.id])
 
+  useSuppressionTerminee(() => charger(0))
+
   function supprimer(s: Seance) {
     supprimerAvecAnnulation({
+      id: s.id,
       notifier,
       message: `Séance du ${dateFr(s.date_seance, true)} supprimée`,
       masquer: () => setMasquees(l => [...l, s.id]),
@@ -82,7 +86,7 @@ export default function Seances({ onEdit, onNouvelle }: { onEdit: (id: string) =
     })
   }
 
-  const visibles = seances.filter(s => !masquees.includes(s.id))
+  const visibles = seances.filter(s => !masquees.includes(s.id) && !suppressions.has(s.id))
 
   return (
     <section>

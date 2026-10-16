@@ -710,6 +710,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   function retirer(i: number) {
     if (lignes.length <= 1) {
       setLignes([vide()])
+      setIndexTerrain(0)
       return
     }
     const copie = lignes.filter((_, j) => j !== i)

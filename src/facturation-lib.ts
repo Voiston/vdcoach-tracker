@@ -79,6 +79,7 @@ export const detailFormats = (e: Entite) => formats(e).map(f => `${f.compte} ${f
 export async function resumeMois(
   client: { id: string; prenom: string; groupe_facturation: string | null },
   mois = moisCourant(),
+  idsExclus?: Set<string>,
 ): Promise<{ n: number; avec: string[]; mois: string } | null> {
   let membres: { id: string; prenom: string }[] = [{ id: client.id, prenom: client.prenom }]
   if (client.groupe_facturation) {
@@ -94,5 +95,6 @@ export async function resumeMois(
     .gte('date_seance', debut)
     .lt('date_seance', fin)
   if (error) return null
-  return { n: new Set((data ?? []).map(s => s.session_id ?? s.id)).size, avec: membres.filter(m => m.id !== client.id).map(m => m.prenom), mois }
+  const valides = (data ?? []).filter(s => !idsExclus?.has(s.id))
+  return { n: new Set(valides.map(s => s.session_id ?? s.id)).size, avec: membres.filter(m => m.id !== client.id).map(m => m.prenom), mois }
 }

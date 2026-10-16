@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { MSG_RESEAU, MSG_SERVEUR, messageErreur } from './erreurs'
 import type { Client } from './Clients'
 import Icone from './icones'
@@ -84,7 +84,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const notifier = useCallback<Notifier>((message, options) => {
     const id = ++compteur.current
-    setListe(l => [...l.slice(-2), { id, message, annuler: options?.annuler }])
+    // Conserve jusqu'à 5 notifications précédentes pour ne pas tronquer les annulations en cours
+    setListe(l => [...l.slice(-5), { id, message, annuler: options?.annuler }])
     setTimeout(() => fermer(id), options?.duree ?? (options?.annuler ? 6000 : 3500))
   }, [fermer])
 
@@ -105,24 +106,167 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/* ---------- Registre global des suppressions en attente ---------- */
+type SuppressionEnAttente = {
+  id: string
+  timer: ReturnType<typeof setTimeout>
+  effacer: () => Promise<unknown>
+  restaurer: () => void
+  notifier: Notifier
+  surConfirmation?: () => void
+}
+
+const suppressionsEnAttente = new Map<string, SuppressionEnAttente>()
+const auditeursEnAttente = new Set<() => void>()
+const auditeursTermine = new Set<() => void>()
+let snapshotEnAttente = new Set<string>()
+
+function notifierEnAttente() {
+  snapshotEnAttente = new Set(suppressionsEnAttente.keys())
+  for (const a of auditeursEnAttente) {
+    try {
+      a()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+}
+
+function notifierSuppressionTerminee() {
+  for (const a of auditeursTermine) {
+    try {
+      a()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+}
+
+export function useSuppressionsEnAttente(): Set<string> {
+  return useSyncExternalStore(
+    cb => {
+      auditeursEnAttente.add(cb)
+      return () => { auditeursEnAttente.delete(cb) }
+    },
+    () => snapshotEnAttente,
+  )
+}
+
+export function estEnAttenteSuppression(id: string): boolean {
+  return suppressionsEnAttente.has(id)
+}
+
+export function getSuppressionsEnAttente(): Set<string> {
+  return snapshotEnAttente
+}
+
+export function onSuppressionTerminee(cb: () => void): () => void {
+  auditeursTermine.add(cb)
+  return () => { auditeursTermine.delete(cb) }
+}
+
+export function useSuppressionTerminee(callback: () => void) {
+  const ref = useRef(callback)
+  ref.current = callback
+  useEffect(() => {
+    return onSuppressionTerminee(() => ref.current())
+  }, [])
+}
+
+export async function viderSuppressionsEnAttente(): Promise<void> {
+  const enCours = [...suppressionsEnAttente.values()]
+  for (const item of enCours) {
+    clearTimeout(item.timer)
+    suppressionsEnAttente.delete(item.id)
+  }
+  notifierEnAttente()
+
+  await Promise.all(
+    enCours.map(async item => {
+      try {
+        const erreur = await item.effacer()
+        if (erreur) {
+          item.restaurer()
+          item.notifier(`Suppression impossible : ${messageErreur(erreur)}`)
+        } else {
+          item.surConfirmation?.()
+        }
+      } catch (e) {
+        item.restaurer()
+      }
+    })
+  )
+  notifierSuppressionTerminee()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (suppressionsEnAttente.size > 0) {
+      viderSuppressionsEnAttente()
+    }
+  })
+  window.addEventListener('beforeunload', (e) => {
+    if (suppressionsEnAttente.size > 0) {
+      viderSuppressionsEnAttente()
+      e.preventDefault()
+    }
+  })
+}
+
 export function supprimerAvecAnnulation(o: {
+  id?: string
   notifier: Notifier
   message: string
   masquer: () => void
   restaurer: () => void
   effacer: () => Promise<unknown>
   delai?: number
+  surConfirmation?: () => void
 }) {
   const delai = o.delai ?? 5000
+  const id = o.id ?? `temp_${Date.now()}_${Math.random()}`
   o.masquer()
+
+  if (suppressionsEnAttente.has(id)) {
+    const prec = suppressionsEnAttente.get(id)!
+    clearTimeout(prec.timer)
+    suppressionsEnAttente.delete(id)
+  }
+
   const minuteur = setTimeout(async () => {
+    suppressionsEnAttente.delete(id)
+    notifierEnAttente()
     const erreur = await o.effacer()
     if (erreur) {
       o.restaurer()
       o.notifier(`Suppression impossible : ${messageErreur(erreur)}`)
+      notifierEnAttente()
+    } else {
+      o.surConfirmation?.()
+      notifierSuppressionTerminee()
     }
   }, delai)
-  o.notifier(o.message, { duree: delai, annuler: () => { clearTimeout(minuteur); o.restaurer() } })
+
+  suppressionsEnAttente.set(id, {
+    id,
+    timer: minuteur,
+    effacer: o.effacer,
+    restaurer: o.restaurer,
+    notifier: o.notifier,
+    surConfirmation: o.surConfirmation,
+  })
+  notifierEnAttente()
+
+  o.notifier(o.message, {
+    duree: delai,
+    annuler: () => {
+      clearTimeout(minuteur)
+      suppressionsEnAttente.delete(id)
+      notifierEnAttente()
+      o.restaurer()
+      notifierSuppressionTerminee()
+    },
+  })
 }
 
 /* ---------- Erreurs ---------- */

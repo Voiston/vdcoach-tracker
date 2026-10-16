@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { verifier } from './validation'
 import { messageErreur } from './erreurs'
-import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useClient, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import { TYPES, TESTS } from './definitions'
 import JaugeObjectif from './JaugeObjectif'
 import Icone from './icones'
@@ -27,6 +27,7 @@ export default function Objectifs() {
   const [erreur, setErreur] = useState('')
   const [occupe, lancer] = useOccupe()
   const notifier = useNotifier()
+  const suppressions = useSuppressionsEnAttente()
   const [masquees, setMasquees] = useState<string[]>([])
 
   useEffect(() => {
@@ -93,8 +94,11 @@ export default function Objectifs() {
     notifier('Objectif ajouté')
   }
 
+  useSuppressionTerminee(charger)
+
   function supprimer(o: Objectif) {
     supprimerAvecAnnulation({
+      id: o.id,
       notifier,
       message: `Objectif « ${libelle(o.source, o.reference)} » supprimé`,
       masquer: () => setMasquees(l => [...l, o.id]),
@@ -107,7 +111,7 @@ export default function Objectifs() {
     })
   }
 
-  const visibles = objectifs.filter(o => !masquees.includes(o.id))
+  const visibles = objectifs.filter(o => !masquees.includes(o.id) && !suppressions.has(o.id))
 
   return (
     <section className="formulaire-etroit">

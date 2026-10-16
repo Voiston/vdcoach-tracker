@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { dateFr, nb } from './format'
-import { EtatVide, MessageErreur, Squelette, TitreSection, useClient } from './ui'
+import { EtatVide, MessageErreur, Squelette, TitreSection, useClient, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import { MUSCLES } from './definitions'
 import type { Rubrique } from './Profil'
 import JaugeObjectif from './JaugeObjectif'
@@ -20,6 +20,7 @@ type SeanceComplete = {
 
 export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => void }) {
   const client = useClient()
+  const suppressions = useSuppressionsEnAttente()
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
   const [dernieres, setDernieres] = useState<SeanceComplete[]>([])
@@ -55,7 +56,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     if (err) return setErreur(messageErreur(err))
     setErreur('')
 
-    const toutes = (s.data ?? []) as unknown as SeanceComplete[]
+    const toutes = ((s.data ?? []) as unknown as SeanceComplete[]).filter(x => !suppressions.has(x.id))
     setDernieres(toutes.slice(0, 3))
 
     const derniereMesure: Record<string, number> = {}
@@ -91,7 +92,9 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   useEffect(() => {
     setPret(false)
     charger()
-  }, [client.id])
+  }, [client.id, suppressions])
+
+  useSuppressionTerminee(charger)
 
   const suivis = (donnees?.objectifs ?? []).map(o => {
     const actuelle = valeurActuelle(donnees!, o.source, o.reference)
