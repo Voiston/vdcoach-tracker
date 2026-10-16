@@ -37,7 +37,7 @@ export default function BilanMensuel() {
 
   async function preparer() {
     const [s, m, o, b] = await Promise.all([
-      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg)').eq('client_id', client.id).order('date_seance'),
+      supabase.from('seances').select('date_seance, exercices(nom, series, charge_kg, duree_sec, duree_min)').eq('client_id', client.id).order('date_seance'),
       supabase.from('mesures').select('type, valeur, date_mesure').eq('client_id', client.id).order('date_mesure').order('id'),
       chargerObjectifs(client.id),
       chargerBibliothequeMuscles(),
@@ -57,7 +57,15 @@ export default function BilanMensuel() {
     // Volume musculaire sur les séances du mois choisi
     const seancesMois = seances
       .filter(x => x.date_seance >= debut && x.date_seance < fin)
-      .map(x => ({ date_seance: x.date_seance, exercices: x.exercices.map(e => ({ nom: e.nom, series: e.series ?? 1 })) }))
+      .map(x => ({
+        date_seance: x.date_seance,
+        exercices: x.exercices.map(e => ({
+          nom: e.nom,
+          series: e.series ?? 1,
+          duree_sec: e.duree_sec,
+          duree_min: e.duree_min,
+        })),
+      }))
     setParMuscle(calculerMuscles(seancesMois, b.biblio ?? null).parMuscle)
 
     // Courbe de poids jusqu'à la fin du mois choisi

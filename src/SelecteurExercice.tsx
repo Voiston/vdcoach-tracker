@@ -446,6 +446,7 @@ export default function SelecteurExercice({
             <li>
               <button
                 type="button"
+                className="selecteur-btn-choix"
                 onClick={() => {
                   const nom = recherche.trim()
                   if (multiple && !selection.length) onChoisir(nom)
@@ -468,7 +469,7 @@ export default function SelecteurExercice({
               <li key={e.nom} className="selecteur-item">
                 <button
                   type="button"
-                  className={coche ? 'choisi' : undefined}
+                  className={`selecteur-btn-choix${coche ? ' choisi' : ''}`}
                   aria-pressed={multiple ? coche : undefined}
                   onClick={() => clicExercice(e.nom)}
                 >
@@ -478,7 +479,7 @@ export default function SelecteurExercice({
                         {ordre ?? '+'}
                       </span>
                     )}
-                    {e.nom}
+                    <span className="selecteur-nom">{e.nom}</span>
                     {faits.has(normaliser(e.nom)) && <span className="puce deja-fait">Déjà fait</span>}
                     {alertes.length > 0 && (
                       <span className="puce alerte-muscle">

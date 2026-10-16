@@ -3,7 +3,7 @@ import { nb } from './format'
 import { bornesMois, libelleMois } from './facturation-lib'
 import { etatObjectif, libelle, unite, valeurActuelle, type DonneesObjectifs } from './objectifs-lib'
 
-export type SeanceCharges = { date_seance: string; exercices: { nom: string; series?: number | null; charge_kg: number | null }[] }
+export type SeanceCharges = { date_seance: string; exercices: { nom: string; series?: number | null; charge_kg: number | null; duree_sec?: number | null; duree_min?: number | null }[] }
 export type MesureBilan = { type: string; valeur: number; date_mesure: string }
 
 export type Bilan = {

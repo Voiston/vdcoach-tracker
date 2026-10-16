@@ -43,7 +43,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     const [s, o, m, b] = await Promise.all([
       supabase
         .from('seances')
-        .select('id, date_seance, duree_min, exercices(nom, ordre, series, charge_kg)')
+        .select('id, date_seance, duree_min, exercices(nom, ordre, series, charge_kg, duree_sec, duree_min)')
         .eq('client_id', client.id)
         .order('date_seance', { ascending: false })
         .order('created_at', { ascending: false }),

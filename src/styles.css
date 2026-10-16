@@ -258,9 +258,13 @@ h4.sous-titre { margin: 1.1rem 0 .4rem; font-size: .9375rem; font-weight: 700; }
 .feuille.selecteur { display: flex; flex-direction: column; gap: .65rem; max-height: min(88dvh, 46rem); }
 .selecteur-liste { flex: 1; min-height: 6rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
 .selecteur-liste li + li { border-top: 1px solid var(--trait); }
-.selecteur-liste button { width: 100%; min-height: 3.4rem; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; padding: .55rem .5rem; text-align: left; font-weight: 600; color: var(--encre); background: none; border-radius: 10px; box-shadow: none; }
-.selecteur-liste button:hover, .selecteur-liste button.choisi { background: var(--accent-doux); }
-.selecteur-coche { display: inline-grid; place-items: center; width: 1.45rem; height: 1.45rem; margin-right: .35rem; border-radius: 50%; font-size: .8rem; font-weight: 700; color: var(--discret); background: var(--fond); border: 1.5px solid var(--bord); }
+.selecteur-liste button:not(.btn-icone):not(.secondaire),
+.selecteur-btn-choix { width: 100%; min-height: 3.4rem; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; padding: .55rem .5rem; text-align: left; font-weight: 600; color: var(--encre); background: none; border-radius: 10px; box-shadow: none; }
+.selecteur-liste button:not(.btn-icone):not(.secondaire):hover,
+.selecteur-liste button:not(.btn-icone):not(.secondaire).choisi,
+.selecteur-btn-choix:hover,
+.selecteur-btn-choix.choisi { background: var(--accent-doux); }
+.selecteur-coche { display: inline-grid; place-items: center; flex: none; width: 1.45rem; height: 1.45rem; margin-right: .35rem; border-radius: 50%; font-size: .8rem; font-weight: 700; color: var(--discret); background: var(--fond); border: 1.5px solid var(--bord); }
 .selecteur-coche.actif { color: var(--sur-accent); background: var(--accent); border-color: var(--accent); }
 .puce.deja-fait { margin-left: .35rem; vertical-align: middle; }
 .selecteur-ligne-titre { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
@@ -1007,18 +1011,47 @@ input[type="checkbox"] { flex: none; width: 1.3rem; height: 1.3rem; min-height: 
 .selecteur-item {
   display: flex;
   align-items: center;
-  gap: .25rem;
+  gap: .35rem;
+  padding-right: .35rem;
 }
-.selecteur-item > button:first-child {
-  flex: 1;
+.selecteur-item > button:first-child,
+.selecteur-item > .selecteur-btn-choix {
+  flex: 1 1 auto;
   min-width: 0;
+  width: auto;
 }
 .btn-etoile {
-  font-size: 1.2rem;
+  flex: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
   color: var(--discret);
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+.btn-etoile:hover {
+  background: var(--accent-doux);
+  color: var(--accent-fonce);
 }
 .btn-etoile.actif {
   color: var(--accent);
+}
+.selecteur-item .btn-etoile,
+.selecteur-liste .btn-etoile {
+  flex: 0 0 2.35rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0;
+  margin-left: auto;
 }
 
 /* Éditeur complet de modèle */

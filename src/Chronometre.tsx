@@ -34,6 +34,9 @@ function bipSonore() {
       osc.start(ctx.currentTime + delai)
       osc.stop(ctx.currentTime + delai + 0.15)
     })
+    setTimeout(() => {
+      ctx.close().catch(() => {})
+    }, 600)
   } catch {
     /* Audio non supporté ou bloqué */
   }

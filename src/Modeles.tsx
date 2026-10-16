@@ -5,7 +5,7 @@ import { analyserSupersets, libelleRepos, resumeCardio } from './format'
 import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
 import Icone from './icones'
-import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
+import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import { REGLES, verifier } from './validation'
 
 type ModeleExo = LigneProgramme & { id?: string; ordre: number }
@@ -59,7 +59,6 @@ export default function Modeles() {
   const notifier = useNotifier()
   const suppressions = useSuppressionsEnAttente()
   const [occupe, lancer] = useOccupe()
-  const [enRenommage, setEnRenommage] = useState<Modele | null>(null)
   const [modelePdf, setModelePdf] = useState<Modele | null>(null)
   const [masques, setMasques] = useState<string[]>([])
 
@@ -327,13 +326,6 @@ export default function Modeles() {
     }
     await charger()
     notifier(`« ${nouveauNom} » créé`)
-  }
-
-  async function enregistrerNom(m: Modele, nom: string): Promise<string | undefined> {
-    const { error } = await supabase.from('modeles').update({ nom }).eq('id', m.id)
-    if (error) return messageErreur(error)
-    charger()
-    notifier('Modèle renommé')
   }
 
   useSuppressionTerminee(charger)
@@ -634,20 +626,6 @@ export default function Modeles() {
         })}
       </ul>
 
-      {enRenommage && (
-        <FeuilleSaisie
-          titre="Renommer le modèle"
-          libelle="Nom du modèle"
-          valeur={enRenommage.nom}
-          obligatoire
-          onFermer={() => setEnRenommage(null)}
-          onValider={async nom => {
-            const e = await enregistrerNom(enRenommage, nom)
-            if (!e) setEnRenommage(null)
-            return e
-          }}
-        />
-      )}
       {modelePdf && (
         <FenetreProgrammePdf
           titreInitial={modelePdf.nom}

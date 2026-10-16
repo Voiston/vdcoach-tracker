@@ -10,3 +10,4 @@ facturation-*.csv
 *sauvegarde*.json
 *backup*.json
 *export*.json
+audit_*.txt

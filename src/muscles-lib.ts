@@ -1,7 +1,15 @@
 import { supabase } from './supabase'
 
 export type Reference = { nom: string; groupe: string; exercice_muscles: { muscle: string; coefficient: number }[] }
-export type SeanceExo = { date_seance: string; exercices: { nom: string; series: number | null }[] }
+export type SeanceExo = {
+  date_seance: string
+  exercices: {
+    nom: string
+    series: number | null
+    duree_sec?: number | null
+    duree_min?: number | null
+  }[]
+}
 export type Apport = { exercice: string; series: number; coefficient: number }
 export type Volume = { total: number; principal: number; apports: Apport[] }
 
@@ -41,7 +49,7 @@ export async function chargerSeancesMuscles(clientId: string, jours: number, dec
     d.setDate(d.getDate() - n)
     return d.toLocaleDateString('sv-SE')
   }
-  let q = supabase.from('seances').select('date_seance, exercices(nom, series)').eq('client_id', clientId).gte('date_seance', jour(jours + decalage - 1))
+  let q = supabase.from('seances').select('date_seance, exercices(nom, series, duree_sec, duree_min)').eq('client_id', clientId).gte('date_seance', jour(jours + decalage - 1))
   if (decalage > 0) {
     q = q.lt('date_seance', jour(decalage - 1))
   } else {
@@ -59,9 +67,22 @@ export function calculerMuscles(seances: SeanceExo[], biblio: Record<string, Ref
   let seriesTotal = 0
   for (const s of seances)
     for (const x of s.exercices) {
-      const series = x.series ?? 1
       const ref = biblio?.[cle(x.nom)]
-      if (ref?.groupe === 'Mobilité' || ref?.groupe === 'Cardio') continue // ni mobilité ni cardio : pas de séries musculaires
+      // La mobilité (étirements) ne compte pas dans les volumes musculaires
+      if (ref?.groupe === 'Mobilité') continue
+      // Le cardio sans muscles ciblés n'est pas compté et ne pollue pas les non-classés
+      if (ref?.groupe === 'Cardio' && (!ref.exercice_muscles || !ref.exercice_muscles.length)) continue
+
+      // Séries : si le cardio est renseigné en durée continue (ex. 20-30 min de course avec 1 série ou sans série),
+      // on convertit en séries équivalentes (~1 série par tranche de 7-8 min, max 5 séries)
+      let series = x.series ?? 1
+      if (ref?.groupe === 'Cardio') {
+        const minutes = x.duree_min ?? (x.duree_sec ? Math.round(x.duree_sec / 60) : 0)
+        if (minutes >= 8 && (x.series === null || x.series <= 1)) {
+          series = Math.min(5, Math.max(1, Math.round(minutes / 8)))
+        }
+      }
+
       seriesTotal += series
       if (!ref || !ref.exercice_muscles.length) {
         nonClasses[x.nom.trim()] = (nonClasses[x.nom.trim()] ?? 0) + series
