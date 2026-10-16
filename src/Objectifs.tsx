@@ -29,6 +29,7 @@ export default function Objectifs() {
   const notifier = useNotifier()
   const suppressions = useSuppressionsEnAttente()
   const [masquees, setMasquees] = useState<string[]>([])
+  const regle = { min: ref === 'test_souplesse' ? -50 : 0, max: 10000 }
 
   useEffect(() => {
     supabase.from('bibliotheque_exercices').select('nom').then(({ data }) =>
@@ -78,6 +79,7 @@ export default function Objectifs() {
 
   async function ajouter(e: React.FormEvent) {
     e.preventDefault()
+    if (verifier(depart, regle) || verifier(cible, regle)) return
     const dep = nombre(depart)
     const cib = nombre(cible)
     if (!ref.trim() || Number.isNaN(dep) || Number.isNaN(cib)) return setErreur('Complète la référence, le départ et la cible.')
@@ -176,10 +178,10 @@ export default function Objectifs() {
             </div>
 
             <div className="grille-2">
-              <Champ libelle={`Départ (${unite(source, ref)})`} erreur={verifier(depart)}>
+              <Champ libelle={`Départ (${unite(source, ref)})`} erreur={verifier(depart, regle)}>
                 <input inputMode="decimal" value={depart} onChange={e => setDepart(e.target.value)} />
               </Champ>
-              <Champ libelle={`Cible (${unite(source, ref)})`} erreur={verifier(cible)}>
+              <Champ libelle={`Cible (${unite(source, ref)})`} erreur={verifier(cible, regle)}>
                 <input inputMode="decimal" value={cible} onChange={e => setCible(e.target.value)} />
               </Champ>
             </div>
@@ -192,7 +194,7 @@ export default function Objectifs() {
             <p className="meta">Le départ est proposé d'après les données du client ; l'échéance est facultative.</p>
 
             <div className="ligne pied-carte">
-              <button type="submit" disabled={occupe || Boolean(verifier(depart) || verifier(cible))}>
+              <button type="submit" disabled={occupe || Boolean(verifier(depart, regle) || verifier(cible, regle))}>
                 {occupe ? 'Ajout en cours…' : "Ajouter l'objectif"}
               </button>
               <button type="button" className="secondaire" onClick={fermerFormulaire}>Annuler</button>

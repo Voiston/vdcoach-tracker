@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { aujourdhui, joursDepuis } from './format'
-import { useNotifier } from './ui'
+import { useNotifier, useOccupe } from './ui'
 
 type Ligne = Record<string, any>
 const CLE = 'vdcoach_derniere_sauvegarde'
@@ -31,7 +31,11 @@ function telecharger(nom: string, contenu: string, type: string) {
   URL.revokeObjectURL(url)
 }
 
-const cellule = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+const cellule = (v: unknown) => {
+  const s = String(v ?? '')
+  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s
+  return `"${safe.replace(/"/g, '""')}"`
+}
 
 function ligneValide(table: string, l: Ligne): boolean {
   if (!l || typeof l !== 'object') return false
@@ -42,6 +46,7 @@ function ligneValide(table: string, l: Ligne): boolean {
 export default function Sauvegarde() {
   const [etat, setEtat] = useState('')
   const notifier = useNotifier()
+  const [occupe, lancer] = useOccupe()
   const [derniere, setDerniere] = useState<string | null>(localStorage.getItem(CLE))
   const [apercu, setApercu] = useState<Donnees | null>(null)
   const jours = derniere ? joursDepuis(derniere) : null
@@ -68,7 +73,17 @@ export default function Sauvegarde() {
             const base = [s.date_seance, nomClient.get(s.client_id), s.duree_min, s.diff_muscu ?? s.ressenti, s.diff_cardio, s.fatigue, s.sommeil]
             const exos = exercices.filter(x => x.seance_id === s.id).sort((a, b) => a.ordre - b.ordre)
             return (exos.length ? exos : [{}]).map(x =>
-              [...base, x.nom, x.series, x.repetitions, x.charge_kg, x.duree_sec, x.distance_km, x.reglage, s.notes].map(cellule).join(';'),
+              [
+                ...base,
+                x.nom,
+                x.series,
+                x.repetitions,
+                x.charge_kg,
+                x.duree_sec ?? (x.duree_min != null ? Number(x.duree_min) * 60 : ''),
+                x.distance_km,
+                x.reglage,
+                s.notes,
+              ].map(cellule).join(';'),
             )
           })
         const entete = ['date', 'client', 'duree_min', 'diff_muscu', 'diff_cardio', 'fatigue', 'sommeil', 'exercice', 'series', 'repetitions', 'charge_kg', 'duree_sec', 'distance_km', 'reglage', 'notes'].join(';')
@@ -104,9 +119,38 @@ export default function Sauvegarde() {
     if (!apercu || !window.confirm('Restaurer ces données ? Les lignes du fichier seront ajoutées ou mises à jour, rien ne sera supprimé.')) return
     setEtat('Restauration en cours…')
     try {
+      const { data: existants, error: errExistants } = await supabase.from('bibliotheque_exercices').select('id, nom')
+      if (errExistants) throw new Error(`bibliotheque_exercices : ${messageErreur(errExistants)}`)
+
+      const idParNom = new Map<string, string>()
+      for (const e of existants ?? []) {
+        if (e.nom) idParNom.set(e.nom.trim().toLowerCase(), e.id)
+      }
+
+      const idMap = new Map<string, string>()
+      const donnees: Donnees = { ...apercu }
+
+      if (idParNom.size > 0 && donnees.bibliotheque_exercices?.length) {
+        donnees.bibliotheque_exercices = donnees.bibliotheque_exercices.map(l => {
+          const cleNom = String(l.nom ?? '').trim().toLowerCase()
+          const idExistant = idParNom.get(cleNom)
+          if (idExistant && idExistant !== l.id) {
+            idMap.set(l.id, idExistant)
+            return { ...l, id: idExistant }
+          }
+          return l
+        })
+        if (idMap.size > 0 && donnees.exercice_muscles?.length) {
+          donnees.exercice_muscles = donnees.exercice_muscles.map(m => {
+            const nouvId = idMap.get(m.exercice_id)
+            return nouvId ? { ...m, exercice_id: nouvId } : m
+          })
+        }
+      }
+
       for (const t of TABLES) {
-        const lignes = apercu[t]
-        if (!lignes.length) continue
+        const lignes = donnees[t]
+        if (!lignes?.length) continue
         const onConflict = t === 'exercice_muscles' && !('id' in lignes[0]) ? 'exercice_id,muscle' : 'id'
         for (let i = 0; i < lignes.length; i += 500) {
           const { error } = await supabase.from(t).upsert(lignes.slice(i, i + 500), { onConflict })
@@ -128,19 +172,19 @@ export default function Sauvegarde() {
         {jours === null ? 'Aucune sauvegarde effectuée sur cet appareil.' : `Dernière sauvegarde : il y a ${jours} jour(s).`}
       </p>
       <div className="ligne">
-        <button type="button" onClick={() => exporter('json')}>Sauvegarde complète (JSON)</button>
-        <button type="button" className="secondaire" onClick={() => exporter('csv')}>Séances (CSV)</button>
+        <button type="button" disabled={occupe} onClick={() => lancer(() => exporter('json'))}>Sauvegarde complète (JSON)</button>
+        <button type="button" className="secondaire" disabled={occupe} onClick={() => lancer(() => exporter('csv'))}>Séances (CSV)</button>
       </div>
       <h3>Restauration</h3>
       <p className="meta">Importe un fichier de sauvegarde JSON : ses données sont ajoutées ou mises à jour, rien n'est supprimé.</p>
-      <input type="file" accept="application/json,.json" onChange={lire} />
+      <input type="file" accept="application/json,.json" disabled={occupe} onChange={lire} />
       {apercu && (
         <>
           <p className="meta">
             Sauvegarde du {apercu.exporte_le ? new Date(apercu.exporte_le).toLocaleDateString('fr-FR') : 'date inconnue'} :{' '}
             {apercu.clients.length} client(s), {apercu.seances.length} séance(s), {apercu.exercices.length} exercice(s), {apercu.mesures.length} mesure(s).
           </p>
-          <button type="button" onClick={restaurer}>Restaurer ces données</button>
+          <button type="button" disabled={occupe} onClick={() => lancer(restaurer)}>Restaurer ces données</button>
         </>
       )}
       {etat && <p className="meta">{etat}</p>}

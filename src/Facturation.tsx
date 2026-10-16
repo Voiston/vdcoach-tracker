@@ -96,7 +96,11 @@ export default function Facturation({ onOuvrir }: { onOuvrir: (clientId: string)
   }
 
   function exporter() {
-    const cellule = (v: string) => `"${v.replace(/"/g, '""')}"`
+    const cellule = (v: string) => {
+      const s = String(v ?? '')
+      const safe = /^[=+\-@]/.test(s) ? `'${s}` : s
+      return `"${safe.replace(/"/g, '""')}"`
+    }
     const lignesCsv = entites.flatMap(e => {
       const statutTxt = LIBELLES_STATUTS[statuts[e.cle] ?? 'a_emettre'].replace(' ✓', '')
       return e.seances.map(s =>

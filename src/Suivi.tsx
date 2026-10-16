@@ -99,6 +99,7 @@ export default function Suivi() {
 
   async function ajouter(e: React.FormEvent) {
     e.preventDefault()
+    if (verifier(valeur, REGLES.mesure)) return
     const v = Number(valeur.replace(',', '.'))
     if (!valeur.trim() || Number.isNaN(v)) return setErreur('Valeur invalide.')
     const { error } = await supabase

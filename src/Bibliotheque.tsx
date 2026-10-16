@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
 import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
 import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import LegendeNiveaux from './LegendeNiveaux'
 import Icone from './icones'
+import { CATALOGUE_EXERCICES, exosManquantsDuCatalogue, importerExercicesCatalogue, type ExerciceCatalogue } from './catalogue-exercices'
+import { normaliser } from './SelecteurExercice'
 
 const GROUPES = ['Jambes', 'Fessiers', 'Pectoraux', 'Dos', 'Épaules', 'Bras', 'Abdominaux', 'Corps entier', 'Cardio', 'Mobilité']
 const MATERIELS = ['Poids du corps', 'Haltères', 'Kettlebell', 'Élastique', 'Barre de traction', 'Sangles de suspension', 'Chaise / banc', 'Swiss ball', 'Corde à sauter', 'Autre']
@@ -26,6 +28,9 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
   const notifier = useNotifier()
   const suppressions = useSuppressionsEnAttente()
   const [masques, setMasques] = useState<string[]>([])
+  const [ouvrirCatalogue, setOuvrirCatalogue] = useState(false)
+  const [rechercheCat, setRechercheCat] = useState('')
+  const [filtreCatGroupe, setFiltreCatGroupe] = useState('')
 
   async function charger() {
     const { data, error } = await supabase.from('bibliotheque_exercices').select('*, exercice_muscles(muscle, coefficient)').order('groupe').order('nom')
@@ -41,6 +46,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault()
     if (!form) return
+    const estCreation = !form.id
     const url = form.video_url.trim()
     if (url && !lienSur(url)) return setErreur('Le lien vidéo doit commencer par http:// ou https://')
     const nouveauNom = form.nom.trim()
@@ -52,17 +58,22 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       const { error } = await supabase.from('bibliotheque_exercices').update(champs).eq('id', id)
       if (error) return setErreur(message(error.code) ?? messageErreur(error))
       if (form.ancienNom && form.ancienNom !== nouveauNom) {
-        await Promise.all([
-          supabase.from('exercices').update({ nom: nouveauNom }).ilike('nom', form.ancienNom),
-          supabase.from('modele_exercices').update({ nom: nouveauNom }).ilike('nom', form.ancienNom),
-          supabase.from('objectifs').update({ reference: nouveauNom }).eq('source', 'charge').ilike('reference', form.ancienNom),
+        const ancienEchappe = form.ancienNom.replace(/[\\%_]/g, '\\$&')
+        const majs = await Promise.all([
+          supabase.from('exercices').update({ nom: nouveauNom }).ilike('nom', ancienEchappe),
+          supabase.from('modele_exercices').update({ nom: nouveauNom }).ilike('nom', ancienEchappe),
+          supabase.from('objectifs').update({ reference: nouveauNom }).eq('source', 'charge').ilike('reference', ancienEchappe),
         ])
+        const errCascade = majs.find(r => r.error)?.error
+        if (errCascade) return setErreur(messageErreur(errCascade))
       }
     } else {
       const { data, error } = await supabase.from('bibliotheque_exercices').insert(champs).select('id').single()
       if (error) return setErreur(message(error.code) ?? messageErreur(error))
       id = data.id as string
-      setForm({ ...form, id })
+      form.id = id
+      form.ancienNom = nouveauNom
+      setForm({ ...form, id, ancienNom: nouveauNom })
     }
 
     const { data: anciensMuscles, error: errAnciens } = await supabase
@@ -101,7 +112,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
     setForm(null)
     setErreur('')
     charger()
-    notifier(form.id ? 'Exercice modifié' : 'Exercice ajouté')
+    notifier(estCreation ? 'Exercice ajouté' : 'Exercice modifié')
   }
 
   useSuppressionTerminee(charger)
@@ -122,6 +133,39 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
   }
 
   const affiches = liste.filter(x => !masques.includes(x.id) && !suppressions.has(x.id) && (!groupe || x.groupe === groupe) && x.nom.toLowerCase().includes(recherche.trim().toLowerCase()))
+
+  const nomsDansBiblio = useMemo(() => new Set(liste.map(e => normaliser(e.nom))), [liste])
+  const manquants = useMemo(() => exosManquantsDuCatalogue(liste), [liste])
+  const catalogueFiltre = useMemo(() => {
+    const q = normaliser(rechercheCat)
+    return CATALOGUE_EXERCICES.filter(e => (!filtreCatGroupe || e.groupe === filtreCatGroupe) && (!q || normaliser(e.nom).includes(q) || normaliser(e.notes).includes(q)))
+  }, [filtreCatGroupe, rechercheCat])
+
+  async function importerTout() {
+    if (!manquants.length) return
+    lancer(async () => {
+      const res = await importerExercicesCatalogue(manquants)
+      if (res.erreur) {
+        setErreur(res.erreur)
+      } else {
+        notifier(`${res.ajoutes} exercice(s) ajouté(s) à la bibliothèque`)
+        setOuvrirCatalogue(false)
+        charger()
+      }
+    })
+  }
+
+  async function importerUn(exo: ExerciceCatalogue) {
+    lancer(async () => {
+      const res = await importerExercicesCatalogue([exo])
+      if (res.erreur) {
+        setErreur(res.erreur)
+      } else {
+        notifier(`« ${exo.nom} » ajouté à la bibliothèque`)
+        charger()
+      }
+    })
+  }
 
   return (
     <section>
@@ -172,7 +216,12 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
           </form>
         </div>
       ) : (
-        <button type="button" style={{ marginBottom: '.75rem' }} onClick={() => setForm(vide())}>+ Nouvel exercice</button>
+        <div className="ligne" style={{ marginBottom: '.75rem', gap: '.5rem', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setForm(vide())}>+ Nouvel exercice</button>
+          <button type="button" className="secondaire" onClick={() => setOuvrirCatalogue(true)}>
+            + Catalogue recommandé {manquants.length > 0 && `(${manquants.length})`}
+          </button>
+        </div>
       )}
 
       <div className="ligne">
@@ -240,7 +289,110 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       </ul>
       {charge && !affiches.length && (liste.length
         ? <EtatVide titre="Aucun exercice trouvé" texte="Essaie une autre recherche ou un autre groupe." action={{ libelle: 'Réinitialiser les filtres', onClick: () => { setGroupe(''); setRecherche('') } }} />
-        : <EtatVide titre="Bibliothèque vide" texte="Ajoute tes exercices pour les retrouver en séance." action={{ libelle: 'Ajouter un exercice', onClick: () => setForm(vide()) }} />)}
+        : <EtatVide titre="Bibliothèque vide" texte={`Ajoute tes exercices manuellement ou installe le catalogue recommandé pour le coaching à domicile (${CATALOGUE_EXERCICES.length} exercices).`} action={{ libelle: 'Explorer le catalogue recommandé', onClick: () => setOuvrirCatalogue(true) }} />)}
+
+      {ouvrirCatalogue && (
+        <div className="voile" onClick={() => setOuvrirCatalogue(false)}>
+          <div
+            className="feuille selecteur"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="catalogue-titre"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="selecteur-entete">
+              <div>
+                <h3 id="catalogue-titre">Catalogue recommandé ({CATALOGUE_EXERCICES.length})</h3>
+                <p className="meta" style={{ margin: '.2rem 0 0' }}>
+                  {manquants.length > 0
+                    ? `${manquants.length} exercice(s) disponible(s) à ajouter.`
+                    : 'Tous les exercices du catalogue sont déjà dans ta bibliothèque.'}
+                </p>
+              </div>
+              <button type="button" className="btn-icone" aria-label="Fermer" onClick={() => setOuvrirCatalogue(false)}>
+                ✕
+              </button>
+            </div>
+
+            <div className="grille-2">
+              <select aria-label="Filtrer par groupe" value={filtreCatGroupe} onChange={e => setFiltreCatGroupe(e.target.value)}>
+                <option value="">Tous les groupes ({CATALOGUE_EXERCICES.length})</option>
+                {GROUPES.map(g => (
+                  <option key={g} value={g}>{g} ({CATALOGUE_EXERCICES.filter(x => x.groupe === g).length})</option>
+                ))}
+              </select>
+              <input
+                aria-label="Rechercher dans le catalogue"
+                placeholder="Rechercher dans le catalogue…"
+                value={rechercheCat}
+                onChange={e => setRechercheCat(e.target.value)}
+              />
+            </div>
+
+            {manquants.length > 0 && (
+              <div className="ligne" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  disabled={occupe}
+                  onClick={importerTout}
+                >
+                  {occupe ? 'Import en cours…' : `Tout ajouter (${manquants.length} nouveaux)`}
+                </button>
+                <span className="meta">{CATALOGUE_EXERCICES.length - manquants.length} déjà présent(s)</span>
+              </div>
+            )}
+
+            <ul className="selecteur-liste">
+              {catalogueFiltre.map(exo => {
+                const dejaPresent = nomsDansBiblio.has(normaliser(exo.nom))
+                return (
+                  <li key={exo.nom} style={{ padding: '.65rem .5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '.75rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+                        <strong>{exo.nom}</strong>
+                        {dejaPresent ? (
+                          <span className="puce stabilisateur">✓ Déjà présent</span>
+                        ) : (
+                          <span className="puce principal">Nouveau</span>
+                        )}
+                      </div>
+                      <p className="meta" style={{ margin: '.2rem 0' }}>{exo.groupe} · {exo.materiel}</p>
+                      {exo.muscles.length > 0 && (
+                        <div className="puces" style={{ margin: '.25rem 0' }}>
+                          {exo.muscles.map(m => (
+                            <span key={m.muscle} className={`puce ${niveauDe(m.coefficient)}`}>
+                              {MUSCLES[m.muscle] ?? m.muscle}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {exo.notes && <p style={{ fontSize: '.85rem', color: 'var(--discret)', margin: '.25rem 0 0' }}>{exo.notes}</p>}
+                    </div>
+
+                    {!dejaPresent && (
+                      <button
+                        type="button"
+                        disabled={occupe}
+                        className="secondaire"
+                        style={{ minHeight: 'auto', padding: '.4rem .75rem', fontSize: '.85rem', flexShrink: 0 }}
+                        onClick={() => importerUn(exo)}
+                      >
+                        + Ajouter
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+
+            <div className="ligne pied-carte" style={{ marginTop: '.25rem' }}>
+              <button type="button" className="secondaire" onClick={() => setOuvrirCatalogue(false)}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

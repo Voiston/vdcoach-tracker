@@ -70,9 +70,9 @@ export function basculerExoFavori(nom: string): Set<string> {
  */
 export function detecterSchemaMoteur(nom: string, groupe?: string): SchemaMoteur {
   const txt = normaliser(`${nom} ${groupe ?? ''}`)
-  if (normaliser(groupe ?? '') === 'mobilite' || /(mobilite|etirement|stretch|assouplissement)/.test(txt)) return 'mobilite'
-  if (normaliser(groupe ?? '') === 'cardio' || /(velo|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping)/.test(txt)) return 'cardio'
-  if (/(fente|bulgare|step up|step-up|montee sur banc|pistol|unilateral jambe)/.test(txt)) return 'fente'
+  if (normaliser(groupe ?? '') === 'mobilite' || /(mobilite|etirement|stretch|assouplissement|cat-cow|chat-vache|open book|livre ouvert)/.test(txt)) return 'mobilite'
+  if (normaliser(groupe ?? '') === 'cardio' || /(velo|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping|skater|montee de genou)/.test(txt)) return 'cardio'
+  if (/(fente|bulgare|step up|step-up|montee sur banc|pistol|unilateral|unipod|une jambe|1 jambe)/.test(txt)) return 'fente'
   if (/(squat|presse|goblet|leg extension|chaise|hack|sissy|wall sit|thruster)/.test(txt)) return 'squat'
   if (/(souleve|deadlift|rdl|roumain|hip thrust|pont fessier|glute bridge|good morning|swing|leg curl|ischio|extension lombaire|kettlebell swing)/.test(txt)) return 'charniere'
   if (/(developpe couche|developpe incline|pompe|push up|push-up|chest press|ecarte|dips|pompes)/.test(txt)) return 'poussee_h'
@@ -101,13 +101,13 @@ export function articulationsSollicitees(nom: string, groupe?: string): string[]
   if (/(souleve|deadlift|good morning|rowing|swing|crunch|sit up|releve de buste|lombaire)/.test(txt)) {
     art.add('rachis_lombaire')
   }
-  if (schema === 'poussee_h' || schema === 'poussee_v' || schema === 'tirage_v' || /(dips|elevation|developpe|pompe|traction|overhead|snatch)/.test(txt)) {
+  if (schema === 'poussee_h' || schema === 'poussee_v' || schema === 'tirage_v' || /(dips|elevation|developpe|pompe|traction|overhead|snatch|gainage inverse)/.test(txt)) {
     art.add('epaule')
   }
   if (/(curl|triceps|dips|pompe|traction|developpe|rowing)/.test(txt)) {
     art.add('coude')
   }
-  if (/(pompe|planche|gainage main|front squat|clean|snatch|kettlebell|barre|halteres)/.test(txt)) {
+  if (/(pompe|planche|gainage main|gainage inverse|front squat|clean|snatch|kettlebell|barre|halteres)/.test(txt)) {
     art.add('poignet')
   }
   if (/(mollet|corde a sauter|course|saut|jump|fente|squat|step)/.test(txt)) {

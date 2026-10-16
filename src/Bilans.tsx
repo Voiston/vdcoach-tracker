@@ -9,6 +9,7 @@ import { TESTS } from './definitions'
 
 type Resultat = { id: string; date_mesure: string; type: string; valeur: number }
 const CLES = Object.keys(TESTS)
+const regleTest = (cle: string) => ({ min: cle === 'test_souplesse' ? -50 : 0, max: 10000 })
 
 export default function Bilans() {
   const [pret, setPret] = useState(false)
@@ -44,6 +45,7 @@ export default function Bilans() {
 
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault()
+    if (CLES.some(c => Boolean(verifier(saisies[c] ?? '', regleTest(c))))) return
     const lignes = Object.entries(saisies)
       .filter(([, v]) => v.trim() !== '')
       .map(([type, v]) => ({ client_id: clientId, date_mesure: date, type, valeur: Number(v.replace(',', '.')), unite: TESTS[type].unite }))
@@ -124,12 +126,12 @@ export default function Bilans() {
           {CLES.map(cle => (
             <label key={cle} className="champ-test">
               <span>{TESTS[cle].label}</span>
-              <input inputMode="decimal" placeholder={TESTS[cle].unite} aria-invalid={Boolean(verifier(saisies[cle] ?? ''))} value={saisies[cle] ?? ''} onChange={e => setSaisies({ ...saisies, [cle]: e.target.value })} />
+              <input inputMode="decimal" placeholder={TESTS[cle].unite} aria-invalid={Boolean(verifier(saisies[cle] ?? '', regleTest(cle)))} value={saisies[cle] ?? ''} onChange={e => setSaisies({ ...saisies, [cle]: e.target.value })} />
             </label>
           ))}
-          {CLES.some(c => verifier(saisies[c] ?? '')) && <p className="champ-erreur" role="alert">Une des valeurs saisies n'est pas un nombre.</p>}
+          {CLES.some(c => verifier(saisies[c] ?? '', regleTest(c))) && <p className="champ-erreur" role="alert">Une des valeurs saisies est invalide.</p>}
           <p className="meta">Remplis seulement les tests réalisés. Utilise le bouton « ⏱ Chrono & repos » pour lancer 1m, 6m ou le chrono libre.</p>
-          <button type="submit" disabled={occupe || CLES.some(c => Boolean(verifier(saisies[c] ?? '')))}>{occupe ? 'Enregistrement…' : 'Enregistrer le bilan'}</button>
+          <button type="submit" disabled={occupe || CLES.some(c => Boolean(verifier(saisies[c] ?? '', regleTest(c))))}>{occupe ? 'Enregistrement…' : 'Enregistrer le bilan'}</button>
         </form>
 
         {dates.length > 0 && (

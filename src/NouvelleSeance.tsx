@@ -941,6 +941,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
 
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault()
+    if (invalide) return
     setEnvoi(true)
     setErreur('')
     const records = await detecterRecords()
