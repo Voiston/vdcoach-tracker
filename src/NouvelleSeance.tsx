@@ -433,6 +433,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setEcranFinTerrain(false)
     if (data.duree_min) setDuree(txt(data.duree_min))
     setErreur('')
+    if (brouillon) setBrouillon(null)
   }
 
   async function enregistrerModele(nom: string): Promise<string | undefined> {
@@ -588,7 +589,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
   }
 
   useEffect(() => {
-    if (seanceId || brouillon || !clientId) return
+    if (seanceId || !clientId) return
     const aRessentisInvites = Object.values(ressentisInvites).some(
       r => r.diff_muscu || r.diff_cardio || r.fatigue || r.sommeil || (r.notes ?? '').trim(),
     )
@@ -602,6 +603,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       aRessentisInvites ||
       lignes.some(l => l.nom.trim())
     if (!contenu) return
+    if (brouillon) setBrouillon(null)
     const minuteur = setTimeout(
       () =>
         ecrireBrouillon({
@@ -650,6 +652,8 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
           })
         : [vide()],
     )
+    setIndexTerrain(0)
+    setEcranFinTerrain(false)
     setBrouillon(null)
   }
 
@@ -682,6 +686,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       setLignes(l => l.map((x, j) => (j === choix.index ? remplacerLigneIntelligente(x, nom) : x)))
     }
     setChoix(null)
+    if (brouillon) setBrouillon(null)
   }
 
   function choisirPlusieursExercices(nomsChoisis: string[]) {
@@ -705,6 +710,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       }
     }
     setChoix(null)
+    if (brouillon) setBrouillon(null)
   }
 
   function retirer(i: number) {
@@ -822,6 +828,7 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
     setEcranFinTerrain(false)
     if (s.duree_min) setDuree(txt(s.duree_min))
     setErreur('')
+    if (brouillon) setBrouillon(null)
   }
 
   /* ---------- Pilotage Mode Terrain Plein Écran ---------- */
@@ -1191,6 +1198,18 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
       <Chronometre />
 
       <form onSubmit={enregistrer} className={modeTerrain ? 'terrain-formulaire' : undefined}>
+        {brouillon && (
+          <div className="brouillon" role="status">
+            <p>
+              <strong>Séance en cours retrouvée</strong>
+              {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
+            </p>
+            <div className="ligne">
+              <button type="button" onClick={reprendreBrouillon}>Reprendre</button>
+              <button type="button" className="secondaire" onClick={abandonnerBrouillon}>Abandonner</button>
+            </div>
+          </div>
+        )}
         {modeTerrain ? (
           <>
             {/* Ruban horizontal des exercices en Mode Terrain */}
@@ -1616,19 +1635,6 @@ export default function NouvelleSeance({ seanceId, onSaved }: { seanceId: string
         ) : (
           /* ================= VUE LISTE CLASSIQUE (Préparation / Bureau) ================= */
           <>
-            {brouillon && (
-              <div className="brouillon" role="status">
-                <p>
-                  <strong>Séance en cours retrouvée</strong>
-                  {' '}(enregistrée le {new Date(brouillon.enregistreLe).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).
-                </p>
-                <div className="ligne">
-                  <button type="button" onClick={reprendreBrouillon}>Reprendre</button>
-                  <button type="button" className="secondaire" onClick={abandonnerBrouillon}>Abandonner</button>
-                </div>
-              </div>
-            )}
-
             <div className="entete-seance-rapide">
               <Champ libelle="Date">
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} required />

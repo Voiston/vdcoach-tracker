@@ -23,7 +23,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   const suppressions = useSuppressionsEnAttente()
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
-  const [dernieres, setDernieres] = useState<SeanceComplete[]>([])
+  const [seances, setSeances] = useState<SeanceComplete[]>([])
   const [donnees, setDonnees] = useState<DonneesObjectifs | null>(null)
   const [muscles, setMuscles] = useState<{ muscle: string; total: number; variation: { texte: string; classe: string } | null }[]>([])
   const [parMuscle, setParMuscle] = useState<Record<string, Volume>>({})
@@ -56,8 +56,9 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
     if (err) return setErreur(messageErreur(err))
     setErreur('')
 
-    const toutes = ((s.data ?? []) as unknown as SeanceComplete[]).filter(x => !suppressions.has(x.id))
-    setDernieres(toutes.slice(0, 3))
+    const brut = (s.data ?? []) as unknown as SeanceComplete[]
+    setSeances(brut)
+    const toutes = brut.filter(x => !suppressions.has(x.id))
 
     const derniereMesure: Record<string, number> = {}
     for (const x of m.data ?? []) derniereMesure[x.type] = Number(x.valeur)
@@ -92,9 +93,11 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   useEffect(() => {
     setPret(false)
     charger()
-  }, [client.id, suppressions])
+  }, [client.id])
 
   useSuppressionTerminee(charger)
+
+  const dernieres = seances.filter(x => !suppressions.has(x.id)).slice(0, 3)
 
   const suivis = (donnees?.objectifs ?? []).map(o => {
     const actuelle = valeurActuelle(donnees!, o.source, o.reference)

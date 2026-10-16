@@ -177,9 +177,7 @@ export async function viderSuppressionsEnAttente(): Promise<void> {
   const enCours = [...suppressionsEnAttente.values()]
   for (const item of enCours) {
     clearTimeout(item.timer)
-    suppressionsEnAttente.delete(item.id)
   }
-  notifierEnAttente()
 
   await Promise.all(
     enCours.map(async item => {
@@ -193,9 +191,12 @@ export async function viderSuppressionsEnAttente(): Promise<void> {
         }
       } catch (e) {
         item.restaurer()
+      } finally {
+        suppressionsEnAttente.delete(item.id)
       }
     })
   )
+  notifierEnAttente()
   notifierSuppressionTerminee()
 }
 
@@ -234,13 +235,17 @@ export function supprimerAvecAnnulation(o: {
   }
 
   const minuteur = setTimeout(async () => {
+    let erreur: unknown
+    try {
+      erreur = await o.effacer()
+    } catch (e) {
+      erreur = e
+    }
     suppressionsEnAttente.delete(id)
     notifierEnAttente()
-    const erreur = await o.effacer()
     if (erreur) {
       o.restaurer()
       o.notifier(`Suppression impossible : ${messageErreur(erreur)}`)
-      notifierEnAttente()
     } else {
       o.surConfirmation?.()
       notifierSuppressionTerminee()
