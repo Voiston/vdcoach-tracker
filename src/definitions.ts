@@ -42,6 +42,45 @@ export const MUSCLES: Record<string, string> = {
   obliques: 'Obliques',
 }
 
+// Correspondance stricte entre chaque groupe musculaire et ses muscles anatomiques
+export const MUSCLES_PAR_GROUPE: Record<string, string[]> = {
+  Jambes: ['quadriceps', 'ischios', 'mollets', 'adducteurs'],
+  Fessiers: ['fessiers'],
+  Pectoraux: ['pectoraux'],
+  Dos: ['grand_dorsal', 'haut_dos', 'lombaires'],
+  Épaules: ['delto_ant', 'delto_lat', 'delto_post'],
+  Bras: ['biceps', 'triceps', 'avant_bras'],
+  Abdominaux: ['abdominaux', 'obliques'],
+  'Corps entier': [
+    'quadriceps',
+    'ischios',
+    'fessiers',
+    'mollets',
+    'adducteurs',
+    'pectoraux',
+    'grand_dorsal',
+    'haut_dos',
+    'lombaires',
+    'delto_ant',
+    'delto_lat',
+    'delto_post',
+    'biceps',
+    'triceps',
+    'avant_bras',
+    'abdominaux',
+    'obliques',
+  ],
+  Cardio: ['quadriceps', 'ischios', 'fessiers', 'mollets', 'abdominaux'],
+  Mobilité: [],
+}
+
+export function musclesDuGroupe(groupe?: string | null): string[] {
+  if (!groupe) return Object.keys(MUSCLES)
+  const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+  const cleGroupe = Object.keys(MUSCLES_PAR_GROUPE).find(g => norm(g) === norm(groupe))
+  return cleGroupe ? MUSCLES_PAR_GROUPE[cleGroupe] : Object.keys(MUSCLES)
+}
+
 // Articulations et rachis : zones à ménager, les plus fréquentes en coaching sportif.
 // Elles ne sont pas reliées aux exercices : elles apparaissent en rappel sur le profil du client.
 export const ARTICULATIONS: Record<string, string> = {

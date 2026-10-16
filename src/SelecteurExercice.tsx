@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ARTICULATIONS, MUSCLES } from './definitions'
+import { ARTICULATIONS, MUSCLES, musclesDuGroupe } from './definitions'
 import { useEcranLarge } from './ui'
 
 export type ExoChoix = {
@@ -71,7 +71,7 @@ export function basculerExoFavori(nom: string): Set<string> {
 export function detecterSchemaMoteur(nom: string, groupe?: string): SchemaMoteur {
   const txt = normaliser(`${nom} ${groupe ?? ''}`)
   if (normaliser(groupe ?? '') === 'mobilite' || /(mobilite|etirement|stretch|assouplissement|cat-cow|chat-vache|open book|livre ouvert)/.test(txt)) return 'mobilite'
-  if (normaliser(groupe ?? '') === 'cardio' || /(velo|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping|skater|montee de genou)/.test(txt)) return 'cardio'
+  if (normaliser(groupe ?? '') === 'cardio' || /(\bvelo\b|course|rameur|skierg|assault|burpee|corde a sauter|tapis|elliptique|hiit|jumping|skater|montee de genou)/.test(txt)) return 'cardio'
   if (/(fente|bulgare|step up|step-up|montee sur banc|pistol|unilateral|unipod|une jambe|1 jambe)/.test(txt)) return 'fente'
   if (/(squat|presse|goblet|leg extension|chaise|hack|sissy|wall sit|thruster)/.test(txt)) return 'squat'
   if (/(souleve|deadlift|rdl|roumain|hip thrust|pont fessier|glute bridge|good morning|swing|leg curl|ischio|extension lombaire|kettlebell swing)/.test(txt)) return 'charniere'
@@ -192,6 +192,22 @@ export default function SelecteurExercice({
     () => [...new Set(exercices.map(e => e.groupe).filter((g): g is string => Boolean(g)))].sort(),
     [exercices],
   )
+
+  const musclesDisponibles = useMemo(() => {
+    if (!groupe) return Object.entries(MUSCLES)
+    const autorises = new Set(musclesDuGroupe(groupe))
+    return Object.entries(MUSCLES).filter(([k]) => autorises.has(k))
+  }, [groupe])
+
+  function changerGroupe(nouveauGroupe: string) {
+    setGroupe(nouveauGroupe)
+    if (nouveauGroupe && muscle) {
+      const autorises = new Set(musclesDuGroupe(nouveauGroupe))
+      if (!autorises.has(muscle)) {
+        setMuscle('')
+      }
+    }
+  }
 
   function correspondMateriel(e: ExoChoix): boolean {
     if (filtreMat === 'tous') return true
@@ -422,7 +438,7 @@ export default function SelecteurExercice({
 
         {(vue === 'tous' || Boolean(q)) && (
           <div className="grille-2 selecteur-filtres-grille">
-            <select aria-label="Filtrer par groupe" value={groupe} onChange={e => setGroupe(e.target.value)}>
+            <select aria-label="Filtrer par groupe" value={groupe} onChange={e => changerGroupe(e.target.value)}>
               <option value="">Tous les groupes</option>
               {groupesDisponibles.map(g => (
                 <option key={g} value={g}>
@@ -430,9 +446,20 @@ export default function SelecteurExercice({
                 </option>
               ))}
             </select>
-            <select aria-label="Filtrer par muscle" value={muscle} onChange={e => setMuscle(e.target.value)}>
-              <option value="">Tous les muscles</option>
-              {Object.entries(MUSCLES).map(([k, libelle]) => (
+            <select
+              aria-label="Filtrer par muscle"
+              value={muscle}
+              onChange={e => setMuscle(e.target.value)}
+              disabled={musclesDisponibles.length === 0}
+            >
+              <option value="">
+                {musclesDisponibles.length === 0
+                  ? 'Aucun muscle'
+                  : groupe
+                    ? `Tous les muscles (${groupe.toLowerCase()})`
+                    : 'Tous les muscles'}
+              </option>
+              {musclesDisponibles.map(([k, libelle]) => (
                 <option key={k} value={k}>
                   {libelle}
                 </option>

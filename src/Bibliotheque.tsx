@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { messageErreur } from './erreurs'
-import { MUSCLES, NIVEAUX, niveauDe } from './definitions'
+import { MUSCLES, NIVEAUX, niveauDe, musclesDuGroupe } from './definitions'
 import { Champ, EtatVide, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe, useSuppressionsEnAttente, useSuppressionTerminee } from './ui'
 import LegendeNiveaux from './LegendeNiveaux'
 import Icone from './icones'
@@ -192,7 +192,25 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
               {form.muscles.map((m, i) => (
                 <div className="ligne" key={i}>
                   <select aria-label="Muscle" value={m.muscle} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, muscle: e.target.value } : x)) })}>
-                    {Object.entries(MUSCLES).map(([k, libelle]) => <option key={k} value={k}>{libelle}</option>)}
+                    {(() => {
+                      const duGroupe = musclesDuGroupe(form.groupe)
+                      const principaux = Object.entries(MUSCLES).filter(([k]) => duGroupe.includes(k))
+                      const autres = Object.entries(MUSCLES).filter(([k]) => !duGroupe.includes(k))
+                      return (
+                        <>
+                          {principaux.length > 0 && (
+                            <optgroup label={`Muscles du groupe ${form.groupe}`}>
+                              {principaux.map(([k, libelle]) => <option key={k} value={k}>{libelle}</option>)}
+                            </optgroup>
+                          )}
+                          {autres.length > 0 && (
+                            <optgroup label="Autres muscles (secondaires / stabilisateurs)">
+                              {autres.map(([k, libelle]) => <option key={k} value={k}>{libelle}</option>)}
+                            </optgroup>
+                          )}
+                        </>
+                      )
+                    })()}
                   </select>
                   <select aria-label="Niveau de sollicitation" value={m.coefficient} onChange={e => setForm({ ...form, muscles: form.muscles.map((x, j) => (j === i ? { ...x, coefficient: e.target.value } : x)) })}>
                     {NIVEAUX.map(n => <option key={n.valeur} value={String(n.valeur)}>{n.libelle}</option>)}
@@ -203,7 +221,13 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
               <button
                 type="button"
                 className="secondaire"
-                onClick={() => setForm({ ...form, muscles: [...form.muscles, { muscle: Object.keys(MUSCLES).find(k => !form.muscles.some(m => m.muscle === k)) ?? 'quadriceps', coefficient: form.muscles.length ? '0.5' : '1' }] })}
+                onClick={() => {
+                  const duGroupe = musclesDuGroupe(form.groupe)
+                  const prop = duGroupe.find(k => !form.muscles.some(m => m.muscle === k))
+                    ?? Object.keys(MUSCLES).find(k => !form.muscles.some(m => m.muscle === k))
+                    ?? 'quadriceps'
+                  setForm({ ...form, muscles: [...form.muscles, { muscle: prop, coefficient: form.muscles.length ? '0.5' : '1' }] })
+                }}
               >
                 + Ajouter un muscle
               </button>
