@@ -5,14 +5,12 @@ import { Avatar, EtatVide, MessageErreur, Squelette } from './ui'
 import type { Client } from './Clients'
 import { TESTS } from './definitions'
 import { libelleFormat, regrouperSeances } from './facturation-lib'
+import { dateFr, ilYa, joursDepuis } from './format'
 
 type Resume = { id: string; client_id: string; date_seance: string; duree_min: number | null; session_id: string | null }
 
 const SEUIL_RELANCE = 21 // jours sans séance avant de proposer une relance
 const SEUIL_BILAN = 56 // jours (8 semaines) depuis le dernier bilan physique avant de proposer d'en refaire un
-const dateFr = (d: string) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-const joursDepuis = (d: string) => Math.floor((Date.now() - Date.parse(d)) / 86_400_000)
-const ilYa = (jours: number) => (jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${jours} jours`)
 
 // Vue d'ensemble affichée sur ordinateur tant qu'aucun client n'est ouvert.
 export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir: (clientId: string) => void; onNouvelleSeance: (clientId: string) => void }) {

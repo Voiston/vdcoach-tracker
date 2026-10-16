@@ -6,8 +6,9 @@ import FenetreProgrammePdf, { type LigneProgramme } from './ProgrammePdf'
 import SelecteurExercice, { type ExoChoix } from './SelecteurExercice'
 import Icone from './icones'
 import { Champ, EtatVide, FeuilleSaisie, MessageErreur, Squelette, supprimerAvecAnnulation, useNotifier, useOccupe } from './ui'
+import { REGLES, verifier } from './validation'
 
-type ModeleExo = LigneProgramme & { ordre: number }
+type ModeleExo = LigneProgramme & { id?: string; ordre: number }
 type Modele = { id: string; nom: string; duree_min: number | null; modele_exercices: ModeleExo[] }
 
 type LigneEditionModele = {
@@ -73,7 +74,7 @@ export default function Modeles() {
   async function charger() {
     const { data, error } = await supabase
       .from('modeles')
-      .select('id, nom, duree_min, modele_exercices(ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant, repos_sec)')
+      .select('id, nom, duree_min, modele_exercices(id, ordre, nom, series, repetitions, charge_kg, duree_sec, duree_min, distance_km, reglage, lie_suivant, repos_sec)')
       .order('nom')
     setCharge(true)
     if (error) setErreur(messageErreur(error))
@@ -185,23 +186,60 @@ export default function Modeles() {
     setLignesEdition(l => l.filter((_, j) => j !== i))
   }
 
+  const invalide =
+    verifier(dureeEdition, REGLES.duree) ||
+    !nomEdition.trim() ||
+    !lignesEdition.length ||
+    lignesEdition.some(
+      l =>
+        verifier(l.series, REGLES.series) ||
+        verifier(l.repetitions, REGLES.repetitions) ||
+        verifier(l.duree_sec, REGLES.duree_sec) ||
+        verifier(l.repos_sec, REGLES.duree_sec) ||
+        verifier(l.charge_kg, REGLES.charge) ||
+        verifier(l.distance_km, REGLES.distance),
+    )
+
   async function enregistrerModele(commeNouveau = false) {
     const nom = nomEdition.trim()
     if (!nom) return setErreurEdition('Donne un nom au modèle.')
     if (!lignesEdition.length) return setErreurEdition('Ajoute au moins un exercice.')
 
+    const errDuree = verifier(dureeEdition, REGLES.duree)
+    if (errDuree) return setErreurEdition(`Durée : ${errDuree}`)
+
+    for (const [idx, l] of lignesEdition.entries()) {
+      const err =
+        verifier(l.series, REGLES.series) ||
+        verifier(l.repetitions, REGLES.repetitions) ||
+        verifier(l.duree_sec, REGLES.duree_sec) ||
+        verifier(l.repos_sec, REGLES.duree_sec) ||
+        verifier(l.charge_kg, REGLES.charge) ||
+        verifier(l.distance_km, REGLES.distance)
+      if (err) {
+        return setErreurEdition(`Exercice « ${l.nom || `#${idx + 1}`} » : ${err}`)
+      }
+    }
+
     const cibleId = commeNouveau ? null : idEdition
     const nomFinal = commeNouveau && idEdition ? `${nom} (variante)` : nom
 
     let modeleId = cibleId
+    let anciensIds: string[] = []
+
     if (modeleId) {
       const { error } = await supabase
         .from('modeles')
         .update({ nom: nomFinal, duree_min: num(dureeEdition) })
         .eq('id', modeleId)
       if (error) return setErreurEdition(messageErreur(error))
-      const { error: errDel } = await supabase.from('modele_exercices').delete().eq('modele_id', modeleId)
-      if (errDel) return setErreurEdition(messageErreur(errDel))
+
+      const { data: anciensExos, error: errAnciens } = await supabase
+        .from('modele_exercices')
+        .select('id')
+        .eq('modele_id', modeleId)
+      if (errAnciens) return setErreurEdition(messageErreur(errAnciens))
+      anciensIds = (anciensExos ?? []).map(x => x.id as string)
     } else {
       const { data, error } = await supabase
         .from('modeles')
@@ -227,10 +265,25 @@ export default function Modeles() {
       lie_suivant: i < lignesEdition.length - 1 ? l.lie_suivant : false,
     }))
 
-    const { error: errExos } = await supabase.from('modele_exercices').insert(lignesDb)
-    if (errExos) {
-      if (!cibleId && modeleId) await supabase.from('modeles').delete().eq('id', modeleId)
-      return setErreurEdition(messageErreur(errExos))
+    let nouveauxIds: string[] = []
+    if (lignesDb.length) {
+      const { data: crees, error: errExos } = await supabase
+        .from('modele_exercices')
+        .insert(lignesDb)
+        .select('id')
+      if (errExos) {
+        if (!cibleId && modeleId) await supabase.from('modeles').delete().eq('id', modeleId)
+        return setErreurEdition(messageErreur(errExos))
+      }
+      nouveauxIds = (crees ?? []).map(x => x.id as string)
+    }
+
+    if (anciensIds.length) {
+      const { error: errDel } = await supabase.from('modele_exercices').delete().in('id', anciensIds)
+      if (errDel) {
+        if (nouveauxIds.length) await supabase.from('modele_exercices').delete().in('id', nouveauxIds)
+        return setErreurEdition(messageErreur(errDel))
+      }
     }
 
     setEditeurOuvert(false)
@@ -315,7 +368,7 @@ export default function Modeles() {
           <form
             onSubmit={e => {
               e.preventDefault()
-              lancer(() => enregistrerModele(false))
+              if (!invalide) lancer(() => enregistrerModele(false))
             }}
           >
             <div className="grille-2">
@@ -369,21 +422,57 @@ export default function Modeles() {
                         </div>
 
                         <div className="modele-editeur-champs">
-                          <label>
+                          <label className={verifier(l.series, REGLES.series) ? 'invalide' : ''}>
                             <span>Séries</span>
-                            <input inputMode="numeric" placeholder="3" value={l.series} onChange={e => majLigne(i, 'series', e.target.value)} />
+                            <input
+                              inputMode="numeric"
+                              placeholder="3"
+                              value={l.series}
+                              onChange={e => majLigne(i, 'series', e.target.value)}
+                              aria-invalid={Boolean(verifier(l.series, REGLES.series))}
+                            />
+                            {verifier(l.series, REGLES.series) && (
+                              <span className="champ-erreur" role="alert">{verifier(l.series, REGLES.series)}</span>
+                            )}
                           </label>
-                          <label>
+                          <label className={verifier(l.repetitions, REGLES.repetitions) ? 'invalide' : ''}>
                             <span>Reps</span>
-                            <input inputMode="numeric" placeholder="10" value={l.repetitions} onChange={e => majLigne(i, 'repetitions', e.target.value)} />
+                            <input
+                              inputMode="numeric"
+                              placeholder="10"
+                              value={l.repetitions}
+                              onChange={e => majLigne(i, 'repetitions', e.target.value)}
+                              aria-invalid={Boolean(verifier(l.repetitions, REGLES.repetitions))}
+                            />
+                            {verifier(l.repetitions, REGLES.repetitions) && (
+                              <span className="champ-erreur" role="alert">{verifier(l.repetitions, REGLES.repetitions)}</span>
+                            )}
                           </label>
-                          <label>
+                          <label className={verifier(l.duree_sec, REGLES.duree_sec) ? 'invalide' : ''}>
                             <span>Temps (s)</span>
-                            <input inputMode="numeric" placeholder="—" value={l.duree_sec} onChange={e => majLigne(i, 'duree_sec', e.target.value)} />
+                            <input
+                              inputMode="numeric"
+                              placeholder="—"
+                              value={l.duree_sec}
+                              onChange={e => majLigne(i, 'duree_sec', e.target.value)}
+                              aria-invalid={Boolean(verifier(l.duree_sec, REGLES.duree_sec))}
+                            />
+                            {verifier(l.duree_sec, REGLES.duree_sec) && (
+                              <span className="champ-erreur" role="alert">{verifier(l.duree_sec, REGLES.duree_sec)}</span>
+                            )}
                           </label>
-                          <label>
+                          <label className={verifier(l.repos_sec, REGLES.duree_sec) ? 'invalide' : ''}>
                             <span>Repos (s)</span>
-                            <input inputMode="numeric" placeholder="60" value={l.repos_sec} onChange={e => majLigne(i, 'repos_sec', e.target.value)} />
+                            <input
+                              inputMode="numeric"
+                              placeholder="60"
+                              value={l.repos_sec}
+                              onChange={e => majLigne(i, 'repos_sec', e.target.value)}
+                              aria-invalid={Boolean(verifier(l.repos_sec, REGLES.duree_sec))}
+                            />
+                            {verifier(l.repos_sec, REGLES.duree_sec) && (
+                              <span className="champ-erreur" role="alert">{verifier(l.repos_sec, REGLES.duree_sec)}</span>
+                            )}
                           </label>
                         </div>
 
@@ -417,14 +506,14 @@ export default function Modeles() {
 
             <MessageErreur message={erreurEdition} />
             <div className="ligne pied-carte" style={{ flexWrap: 'wrap' }}>
-              <button type="submit" disabled={occupe}>
+              <button type="submit" disabled={occupe || Boolean(invalide)}>
                 {occupe ? 'Enregistrement…' : idEdition ? 'Enregistrer les modifications' : 'Créer le modèle'}
               </button>
               {idEdition && (
                 <button
                   type="button"
                   className="secondaire"
-                  disabled={occupe}
+                  disabled={occupe || Boolean(invalide)}
                   onClick={() => lancer(() => enregistrerModele(true))}
                 >
                   Enregistrer comme nouveau

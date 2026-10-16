@@ -275,7 +275,7 @@ export default function SelecteurExercice({
       (a, b) =>
         Number(favoris.has(normaliser(b.nom))) - Number(favoris.has(normaliser(a.nom))) ||
         Number(faits.has(normaliser(b.nom))) - Number(faits.has(normaliser(a.nom))) ||
-        a.nom.localeCompare(b.exo?.nom ?? b.nom, 'fr'),
+        a.nom.localeCompare(b.nom, 'fr'),
     )
   }, [exercices, equivalents, vue, q, muscle, groupe, filtreMat, faits, favoris])
 
