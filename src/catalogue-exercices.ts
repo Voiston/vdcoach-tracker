@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { normaliser } from './SelecteurExercice'
+import { messageErreur } from './erreurs'
 
 export type ExerciceCatalogue = {
   nom: string
@@ -808,7 +809,7 @@ export async function importerExercicesCatalogue(
       .select('id, nom')
 
     if (errInsert) {
-      return { ajoutes: ajoutesTotal, erreur: errInsert.message }
+      return { ajoutes: ajoutesTotal, erreur: messageErreur(errInsert) }
     }
 
     ajoutesTotal += (crees ?? []).length
@@ -836,7 +837,7 @@ export async function importerExercicesCatalogue(
           .from('exercice_muscles')
           .upsert(musclesAInserer, { onConflict: 'exercice_id,muscle' })
         if (errMuscles) {
-          return { ajoutes: ajoutesTotal, erreur: errMuscles.message }
+          return { ajoutes: ajoutesTotal, erreur: messageErreur(errMuscles) }
         }
       }
     }

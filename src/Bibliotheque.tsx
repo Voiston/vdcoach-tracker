@@ -143,26 +143,28 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
 
   async function importerTout() {
     if (!manquants.length) return
+    setErreur('')
     lancer(async () => {
       const res = await importerExercicesCatalogue(manquants)
+      if (res.ajoutes > 0) await charger()
       if (res.erreur) {
         setErreur(res.erreur)
       } else {
         notifier(`${res.ajoutes} exercice(s) ajouté(s) à la bibliothèque`)
         setOuvrirCatalogue(false)
-        charger()
       }
     })
   }
 
   async function importerUn(exo: ExerciceCatalogue) {
+    setErreur('')
     lancer(async () => {
       const res = await importerExercicesCatalogue([exo])
+      if (res.ajoutes > 0) await charger()
       if (res.erreur) {
         setErreur(res.erreur)
       } else {
         notifier(`« ${exo.nom} » ajouté à la bibliothèque`)
-        charger()
       }
     })
   }
@@ -242,7 +244,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       ) : (
         <div className="ligne" style={{ marginBottom: '.75rem', gap: '.5rem', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => setForm(vide())}>+ Nouvel exercice</button>
-          <button type="button" className="secondaire" onClick={() => setOuvrirCatalogue(true)}>
+          <button type="button" className="secondaire" onClick={() => { setErreur(''); setOuvrirCatalogue(true) }}>
             + Catalogue recommandé {manquants.length > 0 && `(${manquants.length})`}
           </button>
         </div>
@@ -313,10 +315,10 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
       </ul>
       {charge && !affiches.length && (liste.length
         ? <EtatVide titre="Aucun exercice trouvé" texte="Essaie une autre recherche ou un autre groupe." action={{ libelle: 'Réinitialiser les filtres', onClick: () => { setGroupe(''); setRecherche('') } }} />
-        : <EtatVide titre="Bibliothèque vide" texte={`Ajoute tes exercices manuellement ou installe le catalogue recommandé pour le coaching à domicile (${CATALOGUE_EXERCICES.length} exercices).`} action={{ libelle: 'Explorer le catalogue recommandé', onClick: () => setOuvrirCatalogue(true) }} />)}
+        : <EtatVide titre="Bibliothèque vide" texte={`Ajoute tes exercices manuellement ou installe le catalogue recommandé pour le coaching à domicile (${CATALOGUE_EXERCICES.length} exercices).`} action={{ libelle: 'Explorer le catalogue recommandé', onClick: () => { setErreur(''); setOuvrirCatalogue(true) } }} />)}
 
       {ouvrirCatalogue && (
-        <div className="voile" onClick={() => setOuvrirCatalogue(false)}>
+        <div className="voile" onClick={() => { setOuvrirCatalogue(false); setErreur('') }}>
           <div
             className="feuille selecteur"
             role="dialog"
@@ -333,10 +335,12 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
                     : 'Tous les exercices du catalogue sont déjà dans ta bibliothèque.'}
                 </p>
               </div>
-              <button type="button" className="btn-icone" aria-label="Fermer" onClick={() => setOuvrirCatalogue(false)}>
+              <button type="button" className="btn-icone" aria-label="Fermer" onClick={() => { setOuvrirCatalogue(false); setErreur('') }}>
                 ✕
               </button>
             </div>
+
+            <MessageErreur message={erreur} />
 
             <div className="grille-2">
               <select aria-label="Filtrer par groupe" value={filtreCatGroupe} onChange={e => setFiltreCatGroupe(e.target.value)}>
@@ -410,7 +414,7 @@ export default function Bibliotheque({ rechercheInitiale = '' }: { rechercheInit
             </ul>
 
             <div className="ligne pied-carte" style={{ marginTop: '.25rem' }}>
-              <button type="button" className="secondaire" onClick={() => setOuvrirCatalogue(false)}>
+              <button type="button" className="secondaire" onClick={() => { setOuvrirCatalogue(false); setErreur('') }}>
                 Fermer
               </button>
             </div>
