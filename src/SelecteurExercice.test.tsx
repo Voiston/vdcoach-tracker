@@ -324,5 +324,60 @@ describe('SelecteurExercice.tsx', () => {
       fireEvent.click(screen.getByLabelText('Retirer Développé couché des favoris'))
       expect(lireExosFavoris().has('developpe couche')).toBe(false)
     })
+
+    it('[REG-03] inclut les muscles réellement sollicités par les exercices du groupe sélectionné', () => {
+      const exercicesDos: ExoChoix[] = [
+        {
+          nom: 'Tirage horizontal',
+          groupe: 'Dos',
+          muscles: [{ muscle: 'grand_dorsal', coefficient: 1 }],
+        },
+        {
+          nom: 'Face pull',
+          groupe: 'Dos',
+          muscles: [
+            { muscle: 'delto_post', coefficient: 1 },
+            { muscle: 'haut_dos', coefficient: 0.5 },
+          ],
+        },
+        {
+          nom: 'Squat',
+          groupe: 'Jambes',
+          muscles: [{ muscle: 'quadriceps', coefficient: 1 }, { muscle: 'fessiers', coefficient: 1 }],
+        },
+      ]
+
+      render(
+        <SelecteurExercice
+          exercices={exercicesDos}
+          faits={new Set()}
+          onChoisir={vi.fn()}
+          onFermer={vi.fn()}
+        />,
+      )
+
+      // Aller sur l'onglet "Tous"
+      fireEvent.click(screen.getByRole('tab', { name: /Tous/ }))
+
+      // Choisir le groupe "Dos"
+      const selectGroupe = screen.getByLabelText('Filtrer par groupe')
+      fireEvent.change(selectGroupe, { target: { value: 'Dos' } })
+
+      // Le selecteur de muscle doit contenir "Deltoïdes postérieurs" (car présent sur Face pull)
+      const selectMuscle = screen.getByLabelText('Filtrer par muscle')
+      const optionsMuscle = Array.from(selectMuscle.querySelectorAll('option')).map(o => o.textContent)
+
+      expect(optionsMuscle).toContain('Deltoïdes postérieurs')
+      expect(optionsMuscle).toContain('Grand dorsal')
+      expect(optionsMuscle).toContain('Haut du dos')
+
+      // Filtrer par Deltoïdes postérieurs
+      fireEvent.change(selectMuscle, { target: { value: 'delto_post' } })
+
+      // Seul Face pull doit être affiché
+      expect(screen.getByText('Face pull')).toBeInTheDocument()
+      expect(screen.queryByText('Tirage horizontal')).not.toBeInTheDocument()
+      expect(screen.queryByText('Squat')).not.toBeInTheDocument()
+    })
   })
 })

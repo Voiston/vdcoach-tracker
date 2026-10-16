@@ -193,16 +193,30 @@ export default function SelecteurExercice({
     [exercices],
   )
 
+  function obtenirMusclesAutorises(g?: string | null): Set<string> {
+    const autorises = new Set(musclesDuGroupe(g))
+    if (g) {
+      for (const e of exercices) {
+        if (e.groupe === g) {
+          for (const m of e.muscles) {
+            autorises.add(m.muscle)
+          }
+        }
+      }
+    }
+    return autorises
+  }
+
   const musclesDisponibles = useMemo(() => {
     if (!groupe) return Object.entries(MUSCLES)
-    const autorises = new Set(musclesDuGroupe(groupe))
+    const autorises = obtenirMusclesAutorises(groupe)
     return Object.entries(MUSCLES).filter(([k]) => autorises.has(k))
-  }, [groupe])
+  }, [groupe, exercices])
 
   function changerGroupe(nouveauGroupe: string) {
     setGroupe(nouveauGroupe)
     if (nouveauGroupe && muscle) {
-      const autorises = new Set(musclesDuGroupe(nouveauGroupe))
+      const autorises = obtenirMusclesAutorises(nouveauGroupe)
       if (!autorises.has(muscle)) {
         setMuscle('')
       }
