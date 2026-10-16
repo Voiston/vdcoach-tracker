@@ -54,7 +54,10 @@ export default function TableauDeBord({ onOuvrir, onNouvelleSeance }: { onOuvrir
   // Une séance partagée (plusieurs participants) ne compte qu'une fois
   const sessions = regrouperSeances(seances)
   const ceMois = sessions.filter(s => s.date >= debutMois).length
-  const sept = sessions.filter(s => joursDepuis(s.date) < 7).length
+  const sept = sessions.filter(s => {
+    const j = joursDepuis(s.date)
+    return j >= 0 && j < 7
+  }).length
   const recentes = [...sessions].reverse().slice(0, 8)
 
   // Clients à relancer : plus de séance depuis 3 semaines (les plus anciens d'abord), puis ceux sans aucune séance

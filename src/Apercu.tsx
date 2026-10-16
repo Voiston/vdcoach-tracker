@@ -31,6 +31,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
   async function charger() {
     const jour = (n: number) => {
       const d = new Date()
+      d.setHours(12, 0, 0, 0)
       d.setDate(d.getDate() - n)
       return d.toLocaleDateString('sv-SE')
     }
@@ -46,7 +47,7 @@ export default function Apercu({ onRubrique }: { onRubrique: (r: Rubrique) => vo
         .order('date_seance', { ascending: false })
         .order('created_at', { ascending: false }),
       supabase.from('objectifs').select('*').eq('client_id', client.id).order('created_at'),
-      supabase.from('mesures').select('type, valeur').eq('client_id', client.id).order('date_mesure'),
+      supabase.from('mesures').select('type, valeur').eq('client_id', client.id).order('date_mesure').order('id'),
       chargerBibliothequeMuscles(),
     ])
     setPret(true)

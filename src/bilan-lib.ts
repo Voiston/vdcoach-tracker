@@ -27,7 +27,7 @@ export function calculerBilan(e: { prenom: string; mois: string; seances: Seance
   const duMois = new Map<string, { nom: string; charge: number }>()
   for (const s of e.seances)
     for (const x of s.exercices) {
-      if (x.charge_kg === null) continue
+      if (x.charge_kg === null || Number(x.charge_kg) <= 0) continue
       const cle = x.nom.trim().toLowerCase()
       const charge = Number(x.charge_kg)
       if (s.date_seance < debut) avant.set(cle, Math.max(avant.get(cle) ?? 0, charge))
